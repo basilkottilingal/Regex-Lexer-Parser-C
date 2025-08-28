@@ -9,8 +9,9 @@
 #include "regex.h"
 
 int main () {
-  char * rgxlist[] = { "(a|b)+0","(11*0+0)(0+1)*0*1*","(a*|a+)" };
-  const char txt[] = "aaccbqaabbaba01bcccd";
+  /* char * rgxlist[] = { "(a|b)+0","(11*0+0)(0+1)*0*1*","(a*|a+)" }; */
+  char * rgxlist[] = { "(11*0+0)(0+1)*0*1*" };
+  const char txt[] = "11000110100101001010001001000111101010101001";
   char buff[60];
 
   for (int i=0; i<sizeof(rgxlist)/sizeof(rgxlist[0]); ++i) {
@@ -25,8 +26,22 @@ int main () {
         printf ("|Q'| < |Q|"); break;
       default : printf ("\n unknown error");
     }
+    /* Sample text */
+    const char * source = txt;
+    do {
+      int m = FULL_DFA_PATTERN (dfa, source);
+      if (m < 0) printf ("failed in match check %d", m);
+      //source += m > 1 ? (m-1)
+      if (m > 0) {
+        m -= 1; buff[m] = '\0';
+        if(m) memcpy (buff, source, m);
+        printf ("\nRegex %s: found in txt \"%s\" (\"%s\")", rgx, buff, source);
+      }
+    } while (*++source);
+  
   }
-
+    
   /* free all memory blocks created */
   rgx_free();
+
 }

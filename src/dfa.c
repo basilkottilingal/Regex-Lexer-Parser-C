@@ -25,6 +25,7 @@ typedef struct DState {
   uint32_t hash;
   int i;
   #endif
+  int flag;
 } Dstate;
 
 static DState *  root    = NULL;    /* Root of the btree datastructure */
@@ -50,6 +51,7 @@ static DState * state ( Stack * list, Stack * bits, int * exists) {
   *exists = 0;
   d = allocate ( sizeof (DState) );
   d->hash = hash;
+  RGXMATCH (d) = RGXMATCH (list);
   d->list = stack_copy ( list );
   d->bits = stack_copy ( bits );
   return (*ptr = d);
@@ -65,6 +67,7 @@ static DState * state ( Stack * list ) {
     ptr = &d->child [cmp < 0 ? 0 : 1];
   }
   d = allocate ( sizeof (DState) );
+  RGXMATCH (d) = RGXMATCH (list);
   d->list = stack_copy ( list );
   return (*ptr = d);
 }
@@ -138,7 +141,7 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
   #endif
   const char *start = txt;
   DState * d = dfa;
-  int status, c, accept = RGXMATCH (d->list);
+  int status, c, accept = RGXMATCH (d);
 
   while ( (c = 0xFF & *txt++) ) {
     d = next (d, list,
@@ -147,7 +150,7 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
               #endif
               buff, c);
     if (!d)                          {  RTN (RGXERR); }
-    if (RGXMATCH (d->list))          {  accept = 1; continue; }
+    if (RGXMATCH (d))                {  accept = 1; continue; }
     if (accept || !d->list->nentries)   break;
   }
   /* return val = number of chars that match rgx + 1 */
@@ -234,12 +237,12 @@ DState * FULL_DFA ( char * rgx ) {
 int FULL_DFA_PATTERN ( DState * dfa, const char * txt ) {
   const char *start = txt;
   DState * d = dfa;
-  int accept = RGXMATCH (d->list), c;
+  int accept = RGXMATCH (d), c;
   while ( (c = 0xFF & *txt++) ) {
     if ( d->next[c] == NULL )
       break;
     d = d->next[c];
-    accept = RGXMATCH (d->list);
+    accept = RGXMATCH (d);
   }
   /* return val = number of chars that match rgx + 1 */
   return accept ? (int) ( txt - start ) : 0;
@@ -297,7 +300,7 @@ DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
   uint32_t hash;
   int nq = Q->len/sizeof (void *), np = P->len/sizeof (void *),
     qsize = BITBYTES (nq), accept;
-  DState * d, * next, *child,                                /* iterators */
+  DState * d, ** next, * child,                                /* iterators */
     ** p =  (hsize < np) ? allocate ( np * sizeof (DState *) ) :   /* {p} */
       memset ( htable, 0, np * sizeof (DState *) ),              /* reuse */
     ** q = (DState **) Q->stack;                      /* original dstates */
@@ -309,28 +312,28 @@ DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
 
     stack_reset (cache);
     Y = bitstack[j] ;
-    for (int k = 0; k < qsize >> 3; ++k) {              /* decoding bits */
+    for (int k = 0; k < qsize >> 3; ++k) {               /* decoding bits */
       int base = k << 6, bit = 0;
       i64 = Y[k];
       while (i64) {
         #if defined(__clang__) || defined(__GNUC__)
-        bit = __builtin_ctzll(i64);
+        bit = __builtin_ctzll(i64);             /* position of lowest bit */
         #else
         if ( i64 & (uint64_t) 0x1 ) {
         #endif
           child = q [bit|base];
-          accept |= RGXMATCH (child->list);
+          accept |= RGXMATCH (child);
           if (child->i == nq-1)      /* root dfa is at the top of Q stack */
             *dfa = d;
           child->i = j;              /* from now 'i' map each q[i] to p[j]*/
           printf(" pushed %d", bit|base);
-          stack_push (cache, child);                     /* Cache of q[i]*/
+          stack_push (cache, child);                      /* Cache of q[i]*/
           stack_free (child->bits); child->bits = NULL;
         #if !defined(__clang__) && !defined(__GNUC__)
         }
-        i64 >>= 1; ++bit;
+        i64 >>= 1; ++bit;                            /* Iterate each bit. */
         #else
-        i64 &= (i64 - 1);  // clear lowest set bit
+        i64 &= (i64 - 1);                         /* clear lowest set bit */
         #endif
       }
     }
@@ -339,8 +342,9 @@ DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
       .list = stack_copy (cache),
       .i    = j,
     }; 
-    RGXMATCH (d->list) = accept;
+    RGXMATCH (d) = accept;
   }
+  stack_free (cache);
 
   /*
   .. Creating the 
@@ -348,9 +352,26 @@ DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
   .. (b) F' = { p[i] | p[i] ∩ F ≠ ∅ } and 
   .. (c) starting node : unique p[k] with, q[0] ∈ p[k] 
   */
+   
+  int c, n, m;
   for (int j=0; j<np; ++j) {
-    Y = bitstack[j] ;
-
+    cache = p[j]->list;
+    DState ** s = (DState **) cache->stack;
+    n = cache->len / sizeof (void *);
+    next = p[j]->next;
+    while (n--) {
+      State ** nfa = (State **) s[n]->list->stack;
+      m = s[n]->list->len / sizeof (void *);
+      while (m--) {
+        if ( (c = nfa[m]->id) < 256 && c >= 0 && !next[c] ) {
+          if (s[n]->next[c] == NULL) return RGXERR;
+          next[c] = p [ s[n]->next[c]->i ];
+          printf (" {d(%d,%c) = %d}", j, (char) c, s[n]->next[c]->i);
+        }
+      }
+      stack_free (s[n]->list); s[n]->list = NULL;
+    }
+    stack_free (cache); p[j]->list = NULL;
   }
   return (!*dfa) ? RGXERR : 1;
 }
@@ -367,7 +388,7 @@ int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
   BSTACK(F); BSTACK(Q_F);
   DState ** q = (DState **) Q->stack, * next;
   for (int i=0; i<nq; ++i) {
-    if (RGXMATCH (q[i]->list)) 
+    if (RGXMATCH (q[i])) 
       INSERT (F, i);                         /* F := { accepting states } */
     else INSERT (Q_F, i);                                          /* Q\F */
   }

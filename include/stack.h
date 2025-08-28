@@ -19,7 +19,7 @@
   #define RGXLIM 1024
 
   typedef struct Stack {
-    void * stack;
+    char * stack;
     int len, max,      /* used array byte size, max array byte size. */
       flag, nentries;  /* flags (if any), Number of entries / bits inserted */
   } Stack;
@@ -34,10 +34,8 @@
   void     stack_push  ( Stack * s, void * );   /* Push an item to the stack */
   uint32_t stack_hash  ( uint32_t * key, int ); /* hash of bitset. Warning: "max" same ? */
   void     stack_sort  ( Stack * s );           /* Sort entries of the stack */
-  #define  stack_reset(_s_) \
-    _s_->len = _s_->nentries = _s_->flag = 0
-  #define  stack_clear(_s_) memset(_s_->stack,0,_s_->max);\
-                            stack_reset(_s_)
+  void     stack_reset ( Stack * s );
+  void     stack_clear ( Stack * s );
 
   /*
   #define _64(p) if ( i & (uint64_t) p )

@@ -23,7 +23,7 @@ int main () {
       case 1 :  
         printf("\n Hopcroft minimsation of rgx %s : ", rgx);
         printf ("|Q'| < |Q|"); break;
-      default : printf ("unknown error");
+      default : printf ("\n unknown error");
     }
   }
 

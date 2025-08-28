@@ -274,8 +274,8 @@ int FULL_DFA_PATTERN ( DState * dfa, const char * txt ) {
   #else
   #define COUNT(B,c)        do { c = 0;                   \
     for (int _i = 0; _i < (qsize>>3); ++_i) {             \
-      uint64_t b8 = B[_i];                                \
-      while (b8) { b8 &= (b8-1); ++c;}                    \
+      uint64_t b64 = B[_i];                               \
+      while (b64) { b64 &= (b64-1); ++c;}                 \
     } } while (0)
   #endif
   #define FREE(B)         BITCLEAR (B); PUSH (pool, B)
@@ -288,64 +288,70 @@ int FULL_DFA_PATTERN ( DState * dfa, const char * txt ) {
 static int
 DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
 
-  /* New DFA. Use same hash table. Faster than O(n.n) bit comparison*/
-  DState ** table = memset (htable, 0, hsize * sizeof (DState *));
+  /* 
+  .. New dfa set Q' from P. 
+  .. Use same hash table. Faster than O(n.n) bit comparison
+  */
   *dfa = NULL;
-  Stack * states = stack_new(0); 
-  uint64_t ** bitstack = (uint64_t **) P->stack, * Y, *y;
+  uint64_t i64, ** bitstack = (uint64_t **) P->stack, * Y, *y;
   uint32_t hash;
   int nq = Q->len/sizeof (void *), np = P->len/sizeof (void *),
-    qsize =  BITBYTES(nq);
-  DState ** q = (DState **) Q->stack, * next;
-  for (int j=0; j<np; ++j) {
+    qsize = BITBYTES (nq), accept;
+  DState * d, * next, *child,                                /* iterators */
+    ** p =  (hsize < np) ? allocate ( np * sizeof (DState *) ) :   /* {p} */
+      memset ( htable, 0, np * sizeof (DState *) ),              /* reuse */
+    ** q = (DState **) Q->stack;                      /* original dstates */
+  Stack * cache = stack_new (0);  
+
+  for (int j=0; j<np; ++j) {                        /* each j in [0, |P|) */
+    accept = 0;
+    p[j] = d = allocate (sizeof (DState));                   /* p[j] in P */
+
+    stack_reset (cache);
     Y = bitstack[j] ;
-    hash = stack_hash ((uint32_t *) Y, qsize);    /* hash for the bit set */
-    DState ** ptr = &table [hash % hsize], * d;
-    while ( (d = *ptr) != NULL ) {              /* resolve hash collision */
-      if ( hash == d->hash ) {
-        int match = 1;
-        y = (uint64_t *) d->bits->stack;
-        for (int i = 0; i < qsize>>3; ++i) { /* bit comparison, collision?*/
-          if (Y[i] != y[i]) { match = 0; break; }
-        }
-        if (match) break;
-        ptr = &d->hchain;
-      }
-    }
-   if (!(*ptr)) {
-      d = allocate (sizeof (DState *));
-      d->hash = hash;
-      d->bits = stack_new (qsize);
-      memcpy (d->bits->stack, Y, qsize);
-      stack_reset (states);
-      for (int k = 0; k < qsize >> 3; ++k) {//            / * decoding bits * /
-        int base = k << 6;
-        uint32_t i = Y[k];
+    for (int k = 0; k < qsize >> 3; ++k) {              /* decoding bits */
+      int base = k << 6, bit = 0;
+      i64 = Y[k];
+      while (i64) {
         #if defined(__clang__) || defined(__GNUC__)
-        while (i) {
-          int bit = __builtin_ctzll(i);
-          PUSH (states, q [bit|base]);
-          printf(" pushed %d", bit|base);
-          i &= (i - 1);  // clear lowest set bit
-        }
+        bit = __builtin_ctzll(i64);
         #else
-        int bit = 0;
-        while (i) {
-          if ( i & (uint64_t) 0x1 )
-            PUSH (states, q [bit|base]);
-          i>>=1; ++bit;
+        if ( i64 & (uint64_t) 0x1 ) {
+        #endif
+          child = q [bit|base];
+          accept |= RGXMATCH (child->list);
+          if (child->i == nq-1)      /* root dfa is at the top of Q stack */
+            *dfa = d;
+          child->i = j;              /* from now 'i' map each q[i] to p[j]*/
+          printf(" pushed %d", bit|base);
+          stack_push (cache, child);                     /* Cache of q[i]*/
+          stack_free (child->bits); child->bits = NULL;
+        #if !defined(__clang__) && !defined(__GNUC__)
         }
+        i64 >>= 1; ++bit;
+        #else
+        i64 &= (i64 - 1);  // clear lowest set bit
         #endif
       }
-      //d->list = stack_copy (states);
-      * ptr = d;
     }
 
-    /* Root Dfa */
-    //if (!*dfa) {
-    //}
+    *d = (DState) { 
+      .list = stack_copy (cache),
+      .i    = j,
+    }; 
+    RGXMATCH (d->list) = accept;
   }
 
+  /*
+  .. Creating the 
+  .. (a) transition for p[i], 
+  .. (b) F' = { p[i] | p[i] ∩ F ≠ ∅ } and 
+  .. (c) starting node : unique p[k] with, q[0] ∈ p[k] 
+  */
+  for (int j=0; j<np; ++j) {
+    Y = bitstack[j] ;
+
+  }
   return (!*dfa) ? RGXERR : 1;
 }
 

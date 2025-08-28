@@ -7,26 +7,28 @@
 #include <stdint.h>
 
 /*
-.. fixme : recover old memory blocks, during realloc
+.. fixme : recover old memory blocks, during realloc.
+.. assumes sizeof(char) = 1
 */
-Stack * stackpool = NULL;
+static Stack * pool = NULL;
+struct Freelist { Stack * next; };
 
 void stack_dstr() {  /* Should be called when arena allocator is freed */
-  stackpool = NULL;
+  pool = NULL;
 }
 
 static inline void stack_realloc ( Stack * s, int max ) {
   s->max = (max + 63) & ~(int) 63; /* nearest 64 Byte alignment. = 8 x (void *) */
-  void * old = s->stack;           /* fixme : 'old' bytes are lost. */
+  char * old = s->stack;           /* fixme : 'old' bytes are lost. */
   s->stack = allocate ( s->max );
   memcpy ( s->stack, old, s->len );
 }
 
 Stack * stack_new ( int len ) {
   len = len <= 0 ? 64 : len;
-  Stack * s = stackpool;
+  Stack * s = pool;
   if (s && s->max >= len) {
-    stackpool = (Stack *) (* ((void **) s->stack ));
+    pool = ((struct Freelist *) s->stack)->next;
     stack_clear (s);
     return s;
   }
@@ -46,8 +48,8 @@ Stack * stack_copy ( Stack * p ) {
 }
 
 void stack_free ( Stack * s ) {
-  *( (void **) s->stack ) = stackpool;
-  stackpool = s;
+  ((struct Freelist *) s->stack)->next = pool;
+  pool = s;
 }
 
 int stack_pcmp ( Stack * s1, Stack * s2 ){
@@ -57,7 +59,7 @@ int stack_pcmp ( Stack * s1, Stack * s2 ){
 
   int cmp;
   RGXCMP (s1->nentries, s2->nentries);
-  void ** a = (void **)s1->stack, **b = (void **)s2->stack;
+  void ** a = (void **) s1->stack, **b = (void **) s2->stack;
   for (int i=0; i<s1->nentries; ++i) {
     RGXCMP (a[i], b[i]);
   }
@@ -66,7 +68,7 @@ int stack_pcmp ( Stack * s1, Stack * s2 ){
   #undef RGXCMP
 }
 
-int stack_bcmp ( Stack * s1, Stack * s2 ){
+int stack_bcmp ( Stack * s1, Stack * s2 ) {
   if ( s1->nentries != s2->nentries )
     return 1;
   if ( s1->len != s2->len )
@@ -101,8 +103,9 @@ void stack_push ( Stack * s, void * m ) {
     stack_realloc (s, s->max + 8 * sizeof (void *));
                                       /* Add 8 slots */
   }
+  memcpy ( s->stack + s->len, &m, sizeof (void *) );
   s->nentries++;
-  ((void **) s->stack) [ (s->len += sizeof (void *))/sizeof(void *) - 1] = m;
+  s->len += sizeof (void *);
 }
 
 /*
@@ -143,4 +146,13 @@ static int ptrcmp (const void * a, const void * b) {
 
 void stack_sort ( Stack * s ) {
   qsort (s->stack, s->nentries, sizeof (void *), ptrcmp);
+}
+
+void stack_reset ( Stack *  s ) {
+  s->len = s->nentries = s->flag = 0;
+}
+
+void stack_clear ( Stack * s ) {
+  s->len = s->nentries = s->flag = 0;
+  memset (s->stack, 0, s->max);
 }

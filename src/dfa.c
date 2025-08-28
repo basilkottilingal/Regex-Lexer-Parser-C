@@ -31,6 +31,7 @@ static DState *  root    = NULL;    /* Root of the btree datastructure */
 static int       nstates = 0;       /* Number of Dfa states. */
 
 #ifdef RGXHSH
+#define BITBYTES(_b) ( (_b + 63 & ~ (int) 63) >> 3 )
 
 static DState ** htable  = NULL;    /* Uses a hashtable */
 static int       hsize;             /* fixme : use prime numbers */
@@ -119,7 +120,7 @@ int rgx_dfa ( char * rgx, DState ** dfa ) {
     if ( (1<<n) > RGXLIM ) return RGXOOM;
     if ( (1<<n) >= nnfa )  break;
   }
-  stacksize = ((nnfa + 63) & ~(int)63 ) >> 3;       /* rounded as 64 bits multiple*/
+  stacksize = BITBYTES (nnfa);                  /* rounded as 64 bits multiple*/
   hsize = primes[ (++n < 6 ? 6 : n) - 6 ];
   htable = allocate ( hsize * sizeof (State *) );   /* fixme : allocate() lmtd to 8kB */
   bits = stack_new (stacksize);
@@ -244,76 +245,125 @@ int FULL_DFA_PATTERN ( DState * dfa, const char * txt ) {
   return accept ? (int) ( txt - start ) : 0;
 }
 
-int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
-  /* fixme */
-  #define BITCLEAR(B)     memset (B, 0, qsize);
-
-  #define STACK(S)        Stack * S = stack_new (0)
-
+  #define BITCLEAR(B)       memset (B, 0, qsize);
   #define LOOKUP(B,b)                                     \
     ( B[(b)>>6] &  ((uint64_t) 1 << ((b) & (int) 63)))
-
   #define INSERT(B,b)                                     \
       B[(b)>>6] |= ((uint64_t) 1 << ((b) & (int) 63))
-
   #define MINUS(_u,_v,_w)                                 \
     for (int _i = 0; _i < (qsize>>3); ++_i) {             \
       _w[_i] = _u[_i] & ~_v[_i];                          \
     }
-
-  #define AND(_u,_v,_w,_c)    do { _c = 0;                \
+  #define AND(_u,_v,_w,_c)  do { _c = 0;                  \
     for (int _i = 0; _i < (qsize>>3); ++_i) {             \
-      _c |= (_w[_i] = _u[_i] & _v[_i]) != 0;         \
+      _c |= (_w[_i] = _u[_i] & _v[_i]) != 0;              \
     } } while (0)
-
-  #define SAME(_u,_v,_c)     do { _c = 1;                 \
+  #define SAME(_u,_v,_c)    do { _c = 1;                  \
     for (int _i = 0; _c && _i < (qsize>>3); ++_i) {       \
       _c = (_u[_i] == _v[_i]);                            \
     } } while (0)
-
-  #define POP(B)          (B->len == 0) ? NULL :          \
-    ((uint64_t **) B->stack) [ (B->len -= sizeof (void *))/sizeof(void *) ]
-
+  #define POP(B)            ( B->len == 0 ? NULL :        \
+    ((uint64_t **) B->stack)                              \
+    [ (B->len -= sizeof (void *))/sizeof(void *) ] )
   #define PUSH(S,B)       stack_push (S, B)
-
   #if defined(__GNUC__) || defined(__clang__)
-  #define COUNT(B,_c)      do { _c = 0;                   \
+  #define COUNT(B,_c)       do { _c = 0;                  \
     for (int _i = 0; _i < (qsize>>3); ++_i) {             \
       _c += __builtin_popcountll( B[_i] );                \
     } } while (0)
   #else
-  #define COUNT(B,c)      do { c = 0;                     \
+  #define COUNT(B,c)        do { c = 0;                   \
     for (int _i = 0; _i < (qsize>>3); ++_i) {             \
       uint64_t b8 = B[_i];                                \
       while (b8) { b8 &= (b8-1); ++c;}                    \
     } } while (0)
   #endif
-
-  #define FREE(B)         BITCLEAR (B); PUSH (POOL, B)
-
+  #define FREE(B)         BITCLEAR (B); PUSH (pool, B)
   #define BSTACK(B)       uint64_t * B =                  \
-    POOL->len ? ( POP(POOL) ) : allocate (qsize)
-
+    pool->len ? POP(pool) : allocate (qsize)
+  #define STACK(S)        Stack * S = stack_new (0)
   #define COPY(S)                                         \
     memcpy ( allocate (qsize), S, qsize )
 
-  #define RTN(r) stack_free (Q); stack_free (P); \
-    stack_free (W); stack_free (POOL); return (r);
+static int
+DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
 
-  STACK(POOL);
+  /* New DFA. Use same hash table. Faster than O(n.n) bit comparison*/
+  DState ** table = memset (htable, 0, hsize * sizeof (DState *));
+  *dfa = NULL;
+  Stack * states = stack_new(0); 
+  uint64_t ** bitstack = (uint64_t **) P->stack, * Y, *y;
+  uint32_t hash;
+  int nq = Q->len/sizeof (void *), np = P->len/sizeof (void *),
+    qsize =  BITBYTES(nq);
+  DState ** q = (DState **) Q->stack, * next;
+  for (int j=0; j<np; ++j) {
+    Y = bitstack[j] ;
+    hash = stack_hash ((uint32_t *) Y, qsize);    /* hash for the bit set */
+    DState ** ptr = &table [hash % hsize], * d;
+    while ( (d = *ptr) != NULL ) {              /* resolve hash collision */
+      if ( hash == d->hash ) {
+        int match = 1;
+        y = (uint64_t *) d->bits->stack;
+        for (int i = 0; i < qsize>>3; ++i) { /* bit comparison, collision?*/
+          if (Y[i] != y[i]) { match = 0; break; }
+        }
+        if (match) break;
+        ptr = &d->hchain;
+      }
+    }
+   if (!(*ptr)) {
+      d = allocate (sizeof (DState *));
+      d->hash = hash;
+      d->bits = stack_new (qsize);
+      memcpy (d->bits->stack, Y, qsize);
+      stack_reset (states);
+      for (int k = 0; k < qsize >> 3; ++k) {//            / * decoding bits * /
+        int base = k << 6;
+        uint32_t i = Y[k];
+        #if defined(__clang__) || defined(__GNUC__)
+        while (i) {
+          int bit = __builtin_ctzll(i);
+          PUSH (states, q [bit|base]);
+          printf(" pushed %d", bit|base);
+          i &= (i - 1);  // clear lowest set bit
+        }
+        #else
+        int bit = 0;
+        while (i) {
+          if ( i & (uint64_t) 0x1 )
+            PUSH (states, q [bit|base]);
+          i>>=1; ++bit;
+        }
+        #endif
+      }
+      //d->list = stack_copy (states);
+      * ptr = d;
+    }
+
+    /* Root Dfa */
+    //if (!*dfa) {
+    //}
+  }
+
+  return (!*dfa) ? RGXERR : 1;
+}
+
+int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
+
+  #define RTN(r) stack_free (Q); stack_free (P); return (r);
+
+  STACK(pool);
   Stack * Q;
-  rgx_dfa_tree (rgx, &Q);
-  int nq = Q->len / sizeof (void *);
-  int qsize =  ((nq + 63) & ~(int) 63) >> 3;
+  rgx_dfa_tree (rgx, &Q);  if (!Q) return RGXERR;
+  int nq = Q->len / sizeof (void *), qsize = BITBYTES(nq);
   printf ("\n |Q| %d ", nq);
   BSTACK(F); BSTACK(Q_F);
   DState ** q = (DState **) Q->stack, * next;
   for (int i=0; i<nq; ++i) {
-    //assert(q[i]->i == i);
-    if( RGXMATCH (q[i]->list) )
-      INSERT (F,   i);                  /* F = {q ∈ Q | accept (q) = 1 } */
-    else
-      INSERT (Q_F, i);                /* Q\F = {q ∈ Q | accept (q) = 0 } */
+    if (RGXMATCH (q[i]->list)) 
+      INSERT (F, i);                         /* F := { accepting states } */
+    else INSERT (Q_F, i);                                          /* Q\F */
   }
 
   /*
@@ -390,76 +440,18 @@ int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
   .. (iii) collectively exhaustive, i.e,  union of p_i is Q
   */
 
-  int np = P->len/sizeof (void *);
-  printf ("|Q'| %d", np);
-  if ( nq == np ) {
-    *dfa = ((DState **) Q->stack) [nq - 1];
-    RTN (0);
-  }
-  if ( nq < np ) {                             /* |P(Q)| should be <= |Q| */
-    RTN (RGXERR);
-  }
-
-  /* New DFA. Use same hash table. Faster than O(n.n) bit comparison*/
-  DState ** table = memset (htable, 0, hsize * sizeof (DState *));
-  *dfa = NULL;
-  Stack * states = W; 
-  uint64_t ** bitstack = (uint64_t **) P->stack, * Y, *y;
-  uint32_t hash;
-  for (int j=0; j<np; ++j) {
-    Y = bitstack[j] ;
-    hash = stack_hash ((uint32_t *) Y, qsize);    /* hash for the bit set */
-    DState ** ptr = &table [hash % hsize], * d;
-    while ( (d = *ptr) != NULL ) {              /* resolve hash collision */
-      if ( hash == d->hash ) {
-        int match = 1;
-        y = (uint64_t *) d->bits->stack;
-        for (int i = 0; i < qsize>>3; ++i) { /* bit comparison, collision?*/
-          if (Y[i] != y[i]) { match = 0; break; }
-        }
-        if (match) break;
-        ptr = &d->hchain;
-      }
-    }
-   if (!(*ptr)) {
-      d = allocate (sizeof (DState *));
-      d->hash = hash;
-      d->bits = stack_new (qsize);
-      memcpy (d->bits->stack, Y, qsize);
-      stack_reset (states);
-      for (int k = 0; k < qsize >> 3; ++k) {//            / * decoding bits * /
-        int base = k << 6;
-        uint32_t i = Y[k];
-        #if defined(__clang__) || defined(__GNUC__)
-        while (i) {
-          int bit = __builtin_ctzll(i);
-          PUSH (states, q [bit|base]);
-printf(" pushed %d", bit|base);
-          i &= (i - 1);  // clear lowest set bit
-        }
-        #else
-        int bit = 0;
-        while (i) {
-          if ( i & (uint64_t) 0x1 )
-            PUSH (states, q [bit|base]);
-          i>>=1; ++bit;
-        }
-        #endif
-      }
-      //d->list = stack_copy (states);
-      * ptr = d;
-    }
-
-    /* Root Dfa */
-    //if (!*dfa) {
-    //}
-  }
-
-//  if (!*dfa) RTN (RGXERR);             /* Cannot locate the root dfa node*/
-
-  RTN (1);
+  stack_free(W); stack_free (pool); 
+  int np = P->len/sizeof (void *); printf ("|Q'| %d", np);
+  int rval = ( nq == np ) ? 0 : 
+    ( nq > np ) ? DFA_MINIMAL ( Q, P, dfa ) :
+    RGXERR;                                    /* |P(Q)| should be <= |Q| */
+  if (nq == np) *dfa = q[nq-1];   
+  RTN (rval);
 
   #undef RTN
+
+}
+
   #undef BSTACK
   #undef LOOKUP
   #undef INSERT
@@ -470,7 +462,4 @@ printf(" pushed %d", bit|base);
   #undef STACK
   #undef COUNT
   #undef MINUS
-
-}
-
 #endif

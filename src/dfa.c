@@ -104,7 +104,7 @@ int rgx_dfa ( char * rgx, DState ** dfa ) {
   #define RTN(r) stack_free (list); return r
   #endif
 
-  int nnfa = rgx_nfa (rgx, &nfa);                   /* nfa graph */
+  int nnfa = rgx_nfa (rgx, &nfa, 0);                   /* nfa graph */
   if (nnfa <= 0) { RTN (RGXERR); }
 
   State ** buff[RGXSIZE];

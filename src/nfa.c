@@ -12,7 +12,6 @@
 .. NFA ( Non-deterministic Finite Automaton )
 */
 
-
 /*
 .. Maintain a linked list of dangling transitions
 */
@@ -29,7 +28,6 @@ typedef struct Fragment {
   Dangling * out;
 } Fragment;
 
-//static Stack * states = NULL;
 static int state_number = 0;
 static State * state ( int id, State * a, State * b ) {
   State * s = allocate ( sizeof (State) );
@@ -39,7 +37,20 @@ static State * state ( int id, State * a, State * b ) {
   s->out = allocate ( nout * sizeof (State *) );
   s->out[0] = a;
   if (a) s->out[1] = b;
-  //stack_push (states, s);
+  return s;
+}
+
+struct fState {
+  State s;
+  int itoken;
+};
+
+static State * fstate ( int itoken ) {
+  struct fState * f = allocate ( sizeof (struct fState) );
+  f->itoken = itoken;
+  State * s = &(f->s);
+  s->id  = NFAACC;
+  s->ist = state_number++;
   return s;
 }
 
@@ -61,8 +72,7 @@ static void concatenate ( Dangling * d, State * s ) {
   }
 }
 
-int rgx_nfa ( char * rgx, State ** start ) {
-
+int rgx_nfa ( char * rgx, State ** start, int itoken ) {
 
   #define  STT(_f_,_a,_b) s = state (_f_,_a,_b); if(s == NULL) return RGXOOM
   #define  POP(_e_)       if (n) _e_ = stack[--n]; else return RGXERR;
@@ -124,7 +134,7 @@ int rgx_nfa ( char * rgx, State ** start ) {
   }
   POP(e);
   if (n) return RGXERR;
-  concatenate ( e.out, state (NFAACC, NULL, NULL) );
+  concatenate ( e.out, fstate (itoken) );
   *start = e.state;
   return state_number;
 

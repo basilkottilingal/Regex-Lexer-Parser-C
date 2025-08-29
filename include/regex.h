@@ -13,11 +13,21 @@
   .. https://swtch.com/~rsc/regexp/regexp1.html
   */
 
-typedef struct State {
-  struct State ** out;
-  int id, counter, ist, flag;
-} State ;  /* NFA State */
-  typedef struct DState DState;   /* DFA State */
+  /* 
+  .. NFA and DFA State
+  */
+  typedef struct State {
+    struct State ** out;
+    int id, counter, ist, flag;
+  } State ;  
+  typedef struct DState DState;
+
+  /*
+  .. API
+  .. (a) rgx_match (rgx, txt), see if "txt" matches regular expression "rgx".
+  */
+  //  int  rgx_match ( char * rgx, const char * txt );
+
   /*
   .. API
   .. (a) create an regex engine from a regex pattern.
@@ -25,7 +35,7 @@ typedef struct State {
   .. (c) destroy() all memory block, created.
   ..     Call @ the end of progam to clear all mem block.
   */
-  int  rgx_nfa       ( char   * rgx, State ** nfa );
+  int  rgx_nfa       ( char   * rgx, State ** nfa, int itoken );
   int  rgx_dfa       ( char   * rgx, DState ** dfa );
   int  rgx_nfa_match ( State  * nfa, const char * txt );
   int  rgx_dfa_match ( DState * dfa, const char * txt );
@@ -54,7 +64,6 @@ typedef struct State {
   .. Bit stacking, hash comparison, etc will be switched on
   */
   #ifdef RGXLRG
-    #define RGXBIT
     #define RGXHSH
   #endif
 
@@ -64,13 +73,6 @@ typedef struct State {
   */
   #ifndef RGXSIZE
     #define RGXSIZE 64
-  #endif
-
-  /*
-  .. Max DFA nodes allowed per regex/language
-  */
-  #ifndef RGXDFASIZE
-    #define RGXDFASIZE 32
   #endif
 
   /* #define RGXNFA_CACHE_LIMIT 512 */

@@ -15,7 +15,7 @@ int main () {
   State * nfa = NULL;
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
 
-    int status = rgx_nfa (rgx[i], &nfa);
+    int status = rgx_nfa (rgx[i], &nfa, 0);
     if (status < RGXEOE) 
       printf ("failed in creating NFAi for rgx %s: %d", rgx[i], status); 
 

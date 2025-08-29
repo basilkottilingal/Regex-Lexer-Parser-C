@@ -197,23 +197,23 @@ int states_transition ( Stack * from, Stack * to, State *** buff, int c ) {
 
 int rgx_nfa_match ( State * nfa, const char * txt ) {
 
-  #define RTN(r) stack_free(s0); stack_free(s1); return r
+  #define RTN(r)    stack_free(s0); stack_free(s1); return r
 
   State ** buff[RGXSIZE];
   Stack * s0 = stack_new (0), * s1 = stack_new(0), * t;
-  const char * start = txt;
-  int status = states_at_start ( nfa, s0, buff ),
-      accept = RGXMATCH (s0), c;
-  if (status) { RTN (status); }
+  const char * start = txt, * end = NULL;
+  int status = states_at_start ( nfa, s0, buff ), c;
+  if (status)         { RTN (status); }
+  if (RGXMATCH (s0) )   end = txt;
   while ( (c =  0xFF & *txt++) ) {
     status = states_transition ( s0, s1, buff, c );
     t = s0; s0 = s1; s1 = t;
-    if ( status )                  {  RTN (status); }
-    if ( RGXMATCH (s0) )           {  accept = 1; continue; }
-    if ( accept || !s0->nentries )    break;
+    if ( status )         {  RTN (status); }
+    if ( RGXMATCH (s0) )  {  end = txt; continue; }
+    if ( !s0->nentries )     break;
   }
   /* return val = number of chars that match rgx + 1 */
-  RTN (accept ? (int) ( txt - start ) : 0);
+  RTN (end ? (int) ( end - start + 1) : 0);
 
   #undef RTN
 }
@@ -226,4 +226,21 @@ int states_bstack ( Stack * list, Stack * bits ) {
     stack_bit ( bits, s[n]->ist );
   }
   return 1;
+}
+
+int rgx_nfas ( Stack * rgx_stack, State ** nfa ) {
+  int n = rgx_stack->len / sizeof (void *);
+  char ** rgx = (char ** )  rgx_stack->stack;
+  State * s = allocate ( sizeof (State) );
+  State * child, ** out = allocate ( (n+1) * sizeof (State *) );
+  for (int i=0; i<n; ++i) {
+    if ( rgx_nfa (rgx[i], &out[i], i) < 0 ) return RGXERR;
+  }
+  *s = (State) {
+    .id = NFAEPS,
+    .ist = state_number++,
+    .out = out
+  };
+  *nfa = s;
+  return 0;
 }

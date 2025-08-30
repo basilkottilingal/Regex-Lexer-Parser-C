@@ -9,6 +9,7 @@
 #include "regex.h"
 
 int main () {
+  //char * rgx[] = { "(aa|b)|(a(a|b))|(bc*)|(bc+)|(1?)|((a|b)+0)" };
   char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
   const char txt[] = "aaccbqaabbaba01bcccd";
   char buff[60];

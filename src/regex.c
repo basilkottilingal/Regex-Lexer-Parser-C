@@ -113,7 +113,7 @@ int rgx_token ( char ** str ) {
       single_char  = 0;
       RTN ( s == 2 ? RGXOP ('>' ) : RGXOP(']'));
     case '(' :
-      if ( TOKEN() == RGXOP('(') )
+      if ( TOKEN() == RGXOP(')') && RGXNXT(str) == '?' )
         RTN (RGXERR);  /* patterns ()(?...) are not yet implemented */
     case ')' : case '|' : case '$' :
     case '.' : case '+' : case '*' :
@@ -213,7 +213,10 @@ int rgx_rpn ( char * s, int ** rpn ) {
       return RGXEOE;
     }
     if ( op <= 0 ) {
-      printf("\nError"); return op;
+      stack.a[stack.n] = RGXERR;
+      *rpn = allocate ( (stack.n+1) * sizeof (int) );
+      memcpy ( *rpn, RGXRPN,  (stack.n+1) * sizeof (int) );
+      printf("\nRgx Error : Wrong Expression "); return op;
     }
     if ( ISRGXOP (op) ) {
       switch ( op & 255 ) {

@@ -383,10 +383,11 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
 
   stack_free(W); stack_free (pool);
   int np = P->len/sizeof (void *); printf ("|Q'| %d", np);
+  dfa [0] = q[nq-1];
+  DState * _d;
   int rval = ( nq == np ) ? 0 :
-    ( nq > np ) ?  dfa_minimal( Q, P, dfa ) :
+    ( nq > np ) ?  dfa_minimal( Q, P, dfa+1 ) :
     RGXERR;                              /* |P(Q)| should be <= |Q| */
-  if (nq == np) *dfa = q[nq-1];
   RTN (rval);
 
   #undef RTN
@@ -446,7 +447,7 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
       break;
     d = d->next[c];
     if (RGXMATCH (d))  end = txt; // { tokens = d->list; }
-    printf ("\n[%c %d]", (char) c, end ? (int) (end-start) : -1 );
+    //printf ("\n[%c %d]", (char) c, end ? (int) (end-start) : -1 );
   }
   /*
   if(end) {

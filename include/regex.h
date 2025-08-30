@@ -31,9 +31,9 @@
   ..      The number of characters matched = val - 1.
   ..      If val = 0, then "txt" doesn't follow "rgx" pattern,
   ..      and val < 0 refers to some error.
-  .. (b) int rgx_dfa ( const char * rgx, Dstate ** dfa );
-  ..      For repeated match lookup of a regex "rgx", this function
-  ..      will evaluate an equivalent form of  minimal DFA in *dfa.
+  .. (b) int rgx_dfa ( const char * rgx, DState ** dfa );
+  ..      For repeated match lookup of a regex "rgx", this function will
+  ..      evaluate original DFA in dfa[0] and minimised DFA in dfa[1].
   ..      The return value < 0 means an error.
   .. (c) int rgx_dfa_match ( DState * dfa, const char * txt);
   ..      Similar to "rgx_match", but uses minimal "dfa" for "rxg"
@@ -49,9 +49,10 @@
   .. Lower level or internal api. Maybe used for debug
   .. (a) creates and NFA
   .. (b) see if "txt" matches regex "rgx" using the nfa created
-  .. (c) Create a dfa for a list of "rgx", if the list
-  ..      have the list of "rgx" with decreasing preference,
-  ..      in case of multiple "rgx" accepts the "txt".
+  .. (c) Create return DFA and minimised DFA in  dfa[0] and dfa[1]
+  ..      respectively for a list of regular expressions "rgx_list".
+  ..      List should have the regex ordered int the decreasing preference,
+  ..      in case of multiple regex are satisfied by "txt".
   */
   int  rgx_nfa       ( char   * rgx, State ** nfa, int itoken );
   int  rgx_nfa_match ( State  * nfa, const char * txt );

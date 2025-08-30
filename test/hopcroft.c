@@ -16,8 +16,9 @@ int main () {
 
   for (int i=0; i<sizeof(rgxlist)/sizeof(rgxlist[0]); ++i) {
     char * rgx = rgxlist[i];
-    DState * dfa = NULL;
-    switch ( rgx_dfa (rgx, &dfa) ) {
+    DState * dfa[2] = {0};
+    int status =  rgx_dfa (rgx, dfa); 
+    switch (status) {
       case 0 :  
         printf("\n Hopcroft minimsation of rgx %s : ", rgx);
         printf ("|Q'| = |Q|"); break;
@@ -26,11 +27,11 @@ int main () {
         printf ("|Q'| < |Q|"); break;
       default : printf ("\n unknown error");
     }
-    if (!dfa) continue;
+    if (dfa<=0) continue;
     /* Sample text */
     const char * source = txt;
     do {
-      int m = rgx_dfa_match (dfa, source);
+      int m = rgx_dfa_match (dfa[1], source);
       if (m < 0) printf ("failed in match check %d", m);
       //source += m > 1 ? (m-1)
       if (m > 0) {

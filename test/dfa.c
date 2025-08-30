@@ -9,15 +9,17 @@
 #include "regex.h"
 
 int main () {
-  char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
+  //char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
+  char * rgx[] = { "1?" };
   const char txt[] = "aaccbqaabbaba01bcccd";
   char buff[60];
   DState * dfa = NULL;
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
-
     int status = rgx_dfa (rgx[i], &dfa);
-    if (status < RGXEOE) 
+    if (status < 0) { 
       printf ("failed in creating DFA for rgx %s: %d", rgx[i], status); 
+      break;
+    }
 
     const char * source = txt;
     do {

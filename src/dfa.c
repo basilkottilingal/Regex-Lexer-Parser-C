@@ -52,63 +52,28 @@ static DState * state ( Stack * list, Stack * bits, int * exists) {
   return (*ptr = d);
 }
 
-static DState * next ( DState * from, Stack * list,
-  Stack * bits, State *** buff, int c )
-{
-  DState ** ptr = &from->next[c];
-  if ( *ptr != NULL ) return *ptr;
-  if ( states_transition ( from->list, list, buff, c) < 0) {
-    return NULL;
-  }
-  int exists;
-  return ( *ptr = state (list, bits, &exists) );
-}
+static DState * dfa_root ( State * nfa, int nnfa ) {
 
-int rgx_dfa ( char * rgx, DState ** dfa ) {
-
-  State * nfa = NULL;
   Stack * list = stack_new (0);
   Stack * bits = stack_new (stacksize);
   #define RTN(r) stack_free (list); stack_free (bits); return r
 
-  int nnfa = rgx_nfa (rgx, &nfa, 0);                   /* nfa graph */
-  if (nnfa <= 0) { RTN (RGXERR); }
-
   State ** buff[RGXSIZE];
-  int status = states_at_start ( nfa, list, buff ); 
-  if (status < 0) { RTN (status); }
+  int status = states_at_start ( nfa, list, buff );
+  if (status < 0) { RTN (NULL); }
 
   nstates = 0;                   /* fixme : Cleaned previous nodes? */
   int n = 0, exists, primes[] = /* prime > 2^N for N in { 6, 7, .. }*/
     { 67, 131, 257, 521, 1031, 2053, 4099, 8209, 16411 };
   while (++n) {
-    if ( (1<<n) > RGXLIM ) return RGXOOM;
-    if ( (1<<n) >= nnfa )  break;
+    if ( (1<<n) > RGXLIM ) { RTN (NULL); }                /* RGXOOM */
+    if ( (1<<n) >= nnfa  )   break;
   }
   stacksize = BITBYTES (nnfa);        /* rounded as 64 bits multiple*/
   hsize = primes[ (++n < 6 ? 6 : n) - 6 ];
   htable = allocate ( hsize * sizeof (State *) );
-  *dfa = state (list, bits, &exists);
-  RTN ( *dfa != NULL ? 0 : RGXERR );
-}
-
-int rgx_dfa_match ( DState * dfa, const char * txt ) {
-
-  State ** buff[RGXSIZE];
-  Stack * list = stack_new (0), * bits = stack_new (stacksize);
-  const char *start = txt, *end = NULL;
-  DState * d = dfa;
-  int status, c;
-  if (RGXMATCH (d) )   end = txt;
-
-  while ( (c = 0xFF & *txt++) ) {
-    d = next (d, list, bits, buff, c);
-    if ( !d )               {  RTN (RGXERR); }
-    if ( RGXMATCH (d) )     {  end = txt; continue; }
-    if ( !d->list->nentries )  break;
-  }
-  /* return val = number of chars that match rgx + 1 */
-  RTN (end ? (int) ( end - start + 1) : 0);
+  DState * root = state (list, bits, &exists);
+  RTN (root);
 
   #undef RTN
 }
@@ -120,12 +85,19 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 .. ...................................................................
 */
 
+/*
+.. Traverse through the DFA tree starting from "root".
+.. The full dfa set will be stored in *states = Q. And also in the
+.. hashtable "htable", where the key is the bit set corresponding to
+.. NFA Cache.
+*/
 static int
-rgx_dfa_tree ( char * rgx, Stack ** states ) {
+rgx_dfa_tree ( DState * root, Stack ** states ) {
   #define RTN(r)  stack_free (list); stack_free (bits);              \
     if (r<0) stack_free (Q); else *states = Q;                       \
     return r
 
+  DState * dfa;
   int c, exists = 0;
   struct tree {
     DState * d; State ** s; int n;
@@ -135,15 +107,14 @@ rgx_dfa_tree ( char * rgx, Stack ** states ) {
     * bits = stack_new (stacksize),
     * Q = stack_new(0);                   /* Q   : set of DFA nodes */
 
-  DState * dfa = NULL;
-  if (rgx_dfa (rgx, &dfa) < 0) { RTN (RGXERR); }
   stack[0] = (struct tree) {
-    dfa, (State **) dfa->list->stack, dfa->list->len / sizeof (void *)
+    root, (State **) root->list->stack,
+    root->list->len / sizeof (void *)
   };
   int state_id = 0, n = 1;                     /* Depth of the tree */
   while (n) {
 
-    /* 
+    /*
     .. Go down the tree if 'next' dfa node is a newly created node
     */
     while ((s = stack[n-1].n ? stack[n-1].s[--stack[n-1].n] : NULL)) {
@@ -176,28 +147,6 @@ rgx_dfa_tree ( char * rgx, Stack ** states ) {
   RTN (0);
 
   #undef RTN
-}
-
-DState * FULL_DFA ( char * rgx ) {
-  Stack * states;
-  rgx_dfa_tree (rgx, &states); /* root DFA is the TOP of the Q stack*/
-  int n = states->len/sizeof(void *);
-  return ((DState **) states->stack ) [n - 1];
-}
-
-int FULL_DFA_PATTERN ( DState * dfa, const char * txt ) {
-  const char *start = txt, *end = NULL;
-  DState * d = dfa;
-  int c;
-  if (RGXMATCH (d)) end = txt;
-  while ( (c = 0xFF & *txt++) ) {
-    if ( d->next[c] == NULL )
-      break;
-    d = d->next[c];
-    if (RGXMATCH (d)) end = txt;
-  }
-  /* return val = number of chars that match rgx + 1 */
-  return end ? (int) ( end - start + 1) : 0;
 }
 
   #define BITCLEAR(B)       memset (B, 0, qsize);
@@ -240,26 +189,24 @@ int FULL_DFA_PATTERN ( DState * dfa, const char * txt ) {
   #define COPY(S)                                                    \
     memcpy ( allocate (qsize), S, qsize )
 
-static int
-DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
+static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
-  /* 
-  .. New dfa set Q' from P. 
+  /*
+  .. New dfa set Q' from P.
   .. Use same hash table. Faster than O(n.n) bit comparison
   */
   *dfa = NULL;
   uint64_t i64, ** bitstack = (uint64_t **) P->stack, * Y, *y;
   uint32_t hash;
   int nq = Q->len/sizeof (void *), np = P->len/sizeof (void *),
-    qsize = BITBYTES (nq), accept;
+    qsize = BITBYTES (nq);
   DState * d, ** next, * child,                        /* iterators */
     ** p =  (hsize < np) ? allocate ( np * sizeof (DState *) ) :
       memset ( htable, 0, np * sizeof (DState *) ), /* reuse htable */
     ** q = (DState **) Q->stack;                /* original dstates */
-  Stack * cache = stack_new (0);  
+  Stack * cache = stack_new (0);
 
   for (int j=0; j<np; ++j) {                  /* each j in [0, |P|) */
-    accept = 0;
     p[j] = d = allocate (sizeof (DState));             /* p[j] in P */
 
     stack_reset (cache);
@@ -274,7 +221,6 @@ DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
         if ( i64 & (uint64_t) 0x1 ) {
         #endif
           child = q [bit|base];
-          accept |= RGXMATCH (child);
           if (child->i == nq-1)   /* root dfa is the TOP of Q stack */
             *dfa = d;
           child->i = j;        /* from now 'i' map each q[i] to p[j]*/
@@ -290,27 +236,25 @@ DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
       }
     }
 
-    *d = (DState) { 
+    *d = (DState) {
       .list = stack_copy (cache),
-      .i    = j,
-    }; 
-    RGXMATCH (d) = accept;
+      .i    = j
+    };
   }
   stack_free (cache);
 
   /*
-  .. Creating the 
-  .. (a) transition for p[i], 
-  .. (b) F' = { p[i] | p[i] ∩ F ≠ ∅ } and 
-  .. (c) starting node : unique p[k] with, q[0] ∈ p[k] 
+  .. Creating the transition for each p[i]
   */
-   
+
   int c, n, m;
+  Stack * tokens = stack_new (0);
   for (int j=0; j<np; ++j) {
-    cache = p[j]->list;
+    d = p[j];
+    cache = d->list;
     DState ** s = (DState **) cache->stack;
     n = cache->len / sizeof (void *);
-    next = p[j]->next;
+    next = d->next;
     while (n--) {
       State ** nfa = (State **) s[n]->list->stack;
       m = s[n]->list->len / sizeof (void *);
@@ -318,32 +262,52 @@ DFA_MINIMAL ( Stack * Q, Stack * P, DState ** dfa ) {
         if ( (c = nfa[m]->id) < 256 && c >= 0 && !next[c] ) {
           if (s[n]->next[c] == NULL) return RGXERR;
           next[c] = p [ s[n]->next[c]->i ];
-          printf (" {d(%d,%c) = %d}", j, (char) c, s[n]->next[c]->i);
+          printf ("\n{d(%d,%c) = %d}", j, (char) c, s[n]->next[c]->i);
+        }
+        else if (c == NFAACC) {
+          stack_push (tokens, nfa[m]);
         }
       }
       stack_free (s[n]->list); s[n]->list = NULL;
     }
-    stack_free (cache); p[j]->list = NULL;
+    stack_free (cache); d->list = NULL;
+    if (tokens->len) {
+      d->list = stack_copy (tokens);
+      stack_reset (tokens);
+      RGXMATCH (d) = 1;
+    }
   }
+  stack_free (tokens);
+
   return (!*dfa) ? RGXERR : 1;
 }
 
-int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
+/*
+.. Given an "old" DFA, it returns minimized DFA (*dfa)
+*/
+
+static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
 
   #define RTN(r) stack_free (Q); stack_free (P); return (r);
 
   STACK(pool);
   Stack * Q;
-  rgx_dfa_tree (rgx, &Q);  if (!Q) return RGXERR;
+  DState * root = dfa_root (nfa, nnfa); if (!nfa) return RGXERR;
+  if ( rgx_dfa_tree (root, &Q) < 0 || !Q )return RGXERR;
   int nq = Q->len / sizeof (void *), qsize = BITBYTES(nq);
   printf ("\n |Q| %d ", nq);
   BSTACK(F); BSTACK(Q_F);
   DState ** q = (DState **) Q->stack, * next;
+  int count1 = 0, count2 = 0;
   for (int i=0; i<nq; ++i) {
-    if (RGXMATCH (q[i])) 
-      INSERT (F, i);                   /* F := { accepting states } */
-    else INSERT (Q_F, i);                                    /* Q\F */
+    if (RGXMATCH (q[i])) {
+      INSERT (F, i);  count1++; /* F := { q in Q | q is accepting } */
+    }
+    else {
+      INSERT (Q_F, i); count2++;                             /* Q\F */
+    }
   }
+  if (!count1) return RGXERR;
 
   /*
   ..  function hopcroft(DFA):
@@ -365,8 +329,7 @@ int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
   ..    return P
   */
 
-
-  STACK(P); PUSH (P, Q_F); PUSH (P, F);            /* P <- {F, Q\F} */
+  STACK(P); if(count2) PUSH (P, Q_F); PUSH (P, F); /* P <- {F, Q\F} */
   STACK(W); PUSH (W, F);                           /* W <- {F}      */
   BSTACK (X); BSTACK (Y1); BSTACK (Y2);
   char alphabets[] = "abcqd01"; /* fixme : use [0,256)*/
@@ -390,7 +353,6 @@ int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
         AND   ( Y, X, Y1, k );                     /* Y1 <- Y ∩ X   */
         if (!k) continue;                          /* Y ∩ X = ∅     */
         MINUS ( Y, X, Y2 );                        /* Y2 <- Y \ X   */
-        int count1, count2;
         COUNT (Y1, count1);                        /* |Y1|          */
         COUNT (Y2, count2);                        /* |Y2|          */
         if ( !count2 ) continue;                   /* Y \ X = ∅     */
@@ -419,12 +381,12 @@ int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
   .. (iii) collectively exhaustive, i.e,  union of p_i is Q
   */
 
-  stack_free(W); stack_free (pool); 
+  stack_free(W); stack_free (pool);
   int np = P->len/sizeof (void *); printf ("|Q'| %d", np);
-  int rval = ( nq == np ) ? 0 : 
-    ( nq > np ) ? DFA_MINIMAL ( Q, P, dfa ) :
+  int rval = ( nq == np ) ? 0 :
+    ( nq > np ) ?  dfa_minimal( Q, P, dfa ) :
     RGXERR;                              /* |P(Q)| should be <= |Q| */
-  if (nq == np) *dfa = q[nq-1];   
+  if (nq == np) *dfa = q[nq-1];
   RTN (rval);
 
   #undef RTN
@@ -442,3 +404,60 @@ int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
   #undef COUNT
   #undef MINUS
   #undef BITBYTES
+
+
+
+int rgx_list_dfa ( Stack * list, DState ** dfa ) {
+  int nr = list->len / sizeof (void *);
+  char ** rgx = (char ** ) list->stack;
+  State * nfa = allocate ( sizeof (State) ),
+    ** out = allocate ( (nr+1) * sizeof (State *) );
+  int n, nt = 0;
+  state_reset ();
+  for (int i=0; i<nr; ++i) {
+    n = rgx_nfa (rgx[i], &out[i], i);
+    if ( n < 0 ) return RGXERR;
+    nt += n;
+  }
+  *nfa = (State) {
+    .id  = NFAEPS,
+    .ist = nt++,
+    .out = out
+  };
+  return hopcroft (nfa, dfa, nt);
+}
+
+int rgx_dfa ( char * rgx, DState ** dfa ) {
+  State * nfa = NULL;
+  state_reset ();
+  int n = rgx_nfa (rgx, &nfa, 0);
+  if ( n < 0 ) return RGXERR;
+  return hopcroft (nfa, dfa, n);
+}
+
+int rgx_dfa_match ( DState * dfa, const char * txt ) {
+  const char *start = txt, *end = NULL;
+  DState * d = dfa;
+  //Stack * tokens = NULL;
+  int c;
+  if (RGXMATCH (d))  end = txt; // {tokens = d->list; }
+  while ( (c = 0xFF & *txt++) ) {
+    if ( d->next[c] == NULL )
+      break;
+    d = d->next[c];
+    if (RGXMATCH (d))  end = txt; // { tokens = d->list; }
+    printf ("\n[%c %d]", (char) c, end ? (int) (end-start) : -1 );
+  }
+  /*
+  if(end) {
+    int n = tokens->len / sizeof (void *);
+    State ** f = (State **) tokens->stack;
+    printf ("\n Token {");
+    for (int i=0; i<n; ++i) 
+      printf (" %d ", state_token (f[i]));
+    printf ("}");
+  }
+  */
+  /* return val = number of chars that match rgx + 1 */
+  return end ? (int) ( end - start + 1) : 0;
+}

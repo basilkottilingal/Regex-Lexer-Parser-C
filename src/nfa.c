@@ -29,6 +29,11 @@ typedef struct Fragment {
 } Fragment;
 
 static int state_number = 0;
+
+int state_reset () {
+  state_number = 0;
+}
+
 static State * state ( int id, State * a, State * b ) {
   State * s = allocate ( sizeof (State) );
   s->id  = id;
@@ -52,6 +57,11 @@ static State * fstate ( int itoken ) {
   s->id  = NFAACC;
   s->ist = state_number++;
   return s;
+}
+
+int state_token ( State * f ) {
+  assert (f->id == NFAACC);
+  return ((struct fState*) f)->itoken;
 }
 
 static Dangling * append ( Dangling * d, Dangling * e ) {
@@ -79,7 +89,8 @@ int rgx_nfa ( char * rgx, State ** start, int itoken ) {
   #define  PUSH(_s_,_d_)  if (n < RGXSIZE) stack[n++] = (Fragment){ _s_, _d_} ; \
                           else return RGXOOM
 
-  state_number = 0;
+  //state_number = 0;
+  int nstates = state_number;
   int * rpn = NULL, status;
   if ( (status = rgx_rpn (rgx, &rpn)) < RGXEOE ) return status;
   int n = 0, op;
@@ -136,7 +147,7 @@ int rgx_nfa ( char * rgx, State ** start, int itoken ) {
   if (n) return RGXERR;
   concatenate ( e.out, fstate (itoken) );
   *start = e.state;
-  return state_number;
+  return state_number - nstates;
 
   #undef  PUSH
   #undef  POP
@@ -228,19 +239,10 @@ int states_bstack ( Stack * list, Stack * bits ) {
   return 1;
 }
 
-int rgx_nfas ( Stack * rgx_stack, State ** nfa ) {
-  int n = rgx_stack->len / sizeof (void *);
-  char ** rgx = (char ** )  rgx_stack->stack;
-  State * s = allocate ( sizeof (State) );
-  State * child, ** out = allocate ( (n+1) * sizeof (State *) );
-  for (int i=0; i<n; ++i) {
-    if ( rgx_nfa (rgx[i], &out[i], i) < 0 ) return RGXERR;
-  }
-  *s = (State) {
-    .id = NFAEPS,
-    .ist = state_number++,
-    .out = out
-  };
-  *nfa = s;
-  return 0;
+int rgx_match ( char * rgx, const char * txt ) {
+  State * nfa = NULL;
+  state_reset ();
+  if ( rgx_nfa (rgx, &nfa, 0) < 0 || !nfa ) return RGXERR;
+  /* fixme :  recollect the used memory */
+  return rgx_nfa_match (nfa, txt);
 }

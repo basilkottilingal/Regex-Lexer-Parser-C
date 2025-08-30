@@ -25,10 +25,8 @@ typedef struct DState {
   int i, flag;
 } Dstate;
 
-static DState *  root    = NULL; /* Root of the btree datastructure */
 static int       nstates = 0;              /* Number of Dfa states. */
 
-#ifdef RGXHSH
 #define BITBYTES(_b) ( (_b + 63 & ~ (int) 63) >> 3 )
 
 static DState ** htable  = NULL;                /* Uses a hashtable */
@@ -41,7 +39,7 @@ static DState * state ( Stack * list, Stack * bits, int * exists) {
   DState ** ptr = &htable [hash % hsize], * d;
   *exists = 1;
   while ( (d = *ptr) != NULL ) {          /* resolve hash collision */
-    if (d->hash == hash && !stack_bcmp (bits, d->bits))
+    if (d->hash == hash && !stack_cmp (bits, d->bits))
       return d;
     ptr = &d->hchain;
   }
@@ -53,54 +51,25 @@ static DState * state ( Stack * list, Stack * bits, int * exists) {
   d->bits = stack_copy ( bits );
   return (*ptr = d);
 }
-#else
-
-static DState * state ( Stack * list ) {
-  stack_sort (list);
-  DState ** ptr = &root, *d;
-  while ( (d = *ptr) != NULL ) {
-    int cmp = stack_pcmp (list, d->list);
-    if(!cmp) return d;
-    ptr = &d->child [cmp < 0 ? 0 : 1];
-  }
-  d = allocate ( sizeof (DState) );
-  RGXMATCH (d) = RGXMATCH (list);
-  d->list = stack_copy ( list );
-  return (*ptr = d);
-}
-
-#endif
 
 static DState * next ( DState * from, Stack * list,
-  #ifdef RGXHSH
-  Stack * bits,
-  #endif
-  State *** buff, int c )
+  Stack * bits, State *** buff, int c )
 {
   DState ** ptr = &from->next[c];
   if ( *ptr != NULL ) return *ptr;
   if ( states_transition ( from->list, list, buff, c) < 0) {
     return NULL;
   }
-  #ifdef RGXHSH
   int exists;
   return ( *ptr = state (list, bits, &exists) );
-  #else
-  return ( *ptr = state (list) );
-  #endif
 }
 
 int rgx_dfa ( char * rgx, DState ** dfa ) {
 
   State * nfa = NULL;
   Stack * list = stack_new (0);
-  #ifdef  RGXHSH
-  Stack * bits = NULL;
-  #define RTN(r) stack_free (list);                                  \
-    if(bits) stack_free (bits); return r
-  #else
-  #define RTN(r) stack_free (list); return r
-  #endif
+  Stack * bits = stack_new (stacksize);
+  #define RTN(r) stack_free (list); stack_free (bits); return r
 
   int nnfa = rgx_nfa (rgx, &nfa, 0);                   /* nfa graph */
   if (nnfa <= 0) { RTN (RGXERR); }
@@ -110,10 +79,6 @@ int rgx_dfa ( char * rgx, DState ** dfa ) {
   if (status < 0) { RTN (status); }
 
   nstates = 0;                   /* fixme : Cleaned previous nodes? */
-  #ifndef RGXHSH
-  root = NULL;
-  *dfa = state (list);
-  #else
   int n = 0, exists, primes[] = /* prime > 2^N for N in { 6, 7, .. }*/
     { 67, 131, 257, 521, 1031, 2053, 4099, 8209, 16411 };
   while (++n) {
@@ -123,30 +88,21 @@ int rgx_dfa ( char * rgx, DState ** dfa ) {
   stacksize = BITBYTES (nnfa);        /* rounded as 64 bits multiple*/
   hsize = primes[ (++n < 6 ? 6 : n) - 6 ];
   htable = allocate ( hsize * sizeof (State *) );
-  bits = stack_new (stacksize);
   *dfa = state (list, bits, &exists);
-  #endif
   RTN ( *dfa != NULL ? 0 : RGXERR );
 }
 
 int rgx_dfa_match ( DState * dfa, const char * txt ) {
 
   State ** buff[RGXSIZE];
-  Stack * list = stack_new (0);
-  #ifdef RGXHSH
-  Stack * bits = stack_new (stacksize);
-  #endif
+  Stack * list = stack_new (0), * bits = stack_new (stacksize);
   const char *start = txt, *end = NULL;
   DState * d = dfa;
   int status, c;
   if (RGXMATCH (d) )   end = txt;
 
   while ( (c = 0xFF & *txt++) ) {
-    d = next (d, list,
-              #ifdef RGXHSH
-              bits,
-              #endif
-              buff, c);
+    d = next (d, list, bits, buff, c);
     if ( !d )               {  RTN (RGXERR); }
     if ( RGXMATCH (d) )     {  end = txt; continue; }
     if ( !d->list->nentries )  break;
@@ -163,8 +119,6 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 .. ...................................................................
 .. ...................................................................
 */
-
-#ifdef RGXHSH
 
 static int
 rgx_dfa_tree ( char * rgx, Stack ** states ) {
@@ -487,7 +441,4 @@ int DFA_MINIMIZATION ( char * rgx, DState ** dfa ) {
   #undef STACK
   #undef COUNT
   #undef MINUS
-
-
-
-#endif
+  #undef BITBYTES

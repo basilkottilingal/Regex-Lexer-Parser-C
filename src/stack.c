@@ -52,6 +52,15 @@ void stack_free ( Stack * s ) {
   pool = s;
 }
 
+/*
+static int ptrcmp (const void * a, const void * b) {
+  return ((a>b) - (a<b));
+}
+
+void stack_sort ( Stack * s ) {
+  qsort (s->stack, s->nentries, sizeof (void *), ptrcmp);
+}
+
 int stack_pcmp ( Stack * s1, Stack * s2 ){
 
   #define RGXCMP(p,q) cmp = ((int) (p > q) - (int) (p < q)); \
@@ -67,8 +76,9 @@ int stack_pcmp ( Stack * s1, Stack * s2 ){
 
   #undef RGXCMP
 }
+*/
 
-int stack_bcmp ( Stack * s1, Stack * s2 ) {
+int stack_cmp ( Stack * s1, Stack * s2 ) {
   if ( s1->nentries != s2->nentries )
     return 1;
   if ( s1->len != s2->len )
@@ -138,14 +148,6 @@ uint32_t stack_hash  ( uint32_t * key, int len ) {
   h *= 0xc2b2ae35;
   h ^= (h >> 16);
   return h;
-}
-
-static int ptrcmp (const void * a, const void * b) {
-  return ((a>b) - (a<b));
-}
-
-void stack_sort ( Stack * s ) {
-  qsort (s->stack, s->nentries, sizeof (void *), ptrcmp);
 }
 
 void stack_reset ( Stack *  s ) {

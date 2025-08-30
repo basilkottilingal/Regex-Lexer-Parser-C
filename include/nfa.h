@@ -10,12 +10,18 @@
   #include "allocator.h"
   #include "stack.h"
 
+  enum {
+    NFAEPS  = 256,  /* Epsilon/Empty transition */
+    NFAACC  = 257,  /* Accepting state */
+    NFAERR  = -2,   /* Unknown alphabet outside [0, 256) */
+  };
+
   int states_add        ( State * start, Stack * list, State *** buff );
   int states_at_start   ( State * nfa,   Stack * list, State *** buff );
   int states_transition ( Stack * from,  Stack * to,   State *** buff, int c );
-  int nfa_info          ( State * start, char ** token );
   int states_bstack     ( Stack * list,  Stack * bits );
-  int rgx_nfas          ( Stack * rgx,   State ** nfa );
+  int state_token       ( State * f );
+  int state_reset       ();
 
   #define RGXMATCH(_s_) (_s_)->flag
 

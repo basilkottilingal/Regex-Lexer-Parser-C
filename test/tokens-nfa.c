@@ -13,30 +13,30 @@
 int main () {
   char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
   const char txt[] = "aaccbqaabbaba01bcccd";
+  //const char txt[] = "aacccccccc";
   char buff[60];
-  State * nfa = NULL;
   Stack * stk = stack_new (0);
   printf ("Regex group ");
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
     printf ("\"%s\" ", rgx[i]);
     stack_push (stk, rgx[i]);
   }
-  int status = rgx_nfas (stk, &nfa);
+  DState * dfa = NULL;
+  int status = rgx_list_dfa (stk, &dfa);
   if (status < RGXEOE) 
     printf ("failed in creating NFAi for rgx group"); 
-  {
-    const char * source = txt;
-    do {
-      int m = rgx_nfa_match (nfa, source);
-      if (m < 0) printf ("failed in match check %d", m); 
-      //source += m > 1 ? (m-1) 
-      if (m > 0) {
-        m -= 1; buff[m] = '\0';
-        if(m) memcpy (buff, source, m);
-        printf ("\nRegex: found in txt \"%s\" (\"%s\")", buff, source);
-      }
-    } while (*++source);
-  }
+
+  const char * source = txt;
+  do {
+    int m = rgx_dfa_match (dfa, source);
+    if (m < 0) printf ("failed in match check %d", m); 
+    //source += m > 1 ? (m-1) 
+    if (m > 0) {
+      m -= 1; buff[m] = '\0';
+      if(m) memcpy (buff, source, m);
+      printf ("\nRegex: found in txt \"%s\" (\"%s\")", buff, source);
+    }
+  }/* while (0);*/while(*++source);
 
   /* free all memory blocks created */
   rgx_free();

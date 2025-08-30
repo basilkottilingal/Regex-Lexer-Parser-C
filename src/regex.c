@@ -174,9 +174,9 @@ enum {
   RGXEND = 8  /* Ending */
 };
 
-typedef struct Stack {
+typedef struct iStack {
   int * a, n, max;
-} Stack;
+} iStack;
 
 /*
 .. Reverse polish notation
@@ -187,7 +187,7 @@ int rgx_rpn ( char * s, int ** rpn ) {
      (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_))
   #define  TOP(_s_)              ( _s_.n ? _s_.a[_s_.n - 1] : '\0' )
   #define  POP(_s_)              ( _s_.n ? _s_.a[--_s_.n] : '\0' )
-  #define  STACK(_a_,_m_)     (Stack) {.a = _a_, .n = 0, .max = _m_}
+  #define  STACK(_a_,_m_)     (iStack) {.a = _a_, .n = 0, .max = _m_}
   #define  RTN(_s_,_c_)         if (PUSH(_s_,_c_)<RGXEOE) return TOP(_s_)
   #define  OPERATOR(_c_)        RTN(ostack,_c_); last = RGXOPR;
   #define  OPERAND(_c_)         RTN(stack,_c_);  last = RGXOPD;
@@ -197,7 +197,7 @@ int rgx_rpn ( char * s, int ** rpn ) {
   int queued[4];
   int RGXRPN[RGXSIZE];
   int RGXOPS[RGXSIZE];
-  Stack stack  = STACK (RGXRPN, RGXSIZE),
+  iStack stack  = STACK (RGXRPN, RGXSIZE),
         ostack = STACK (RGXOPS, RGXSIZE),
         queue  = STACK (queued, 4);
   int op, last = RGXBGN, *range = &token[1];

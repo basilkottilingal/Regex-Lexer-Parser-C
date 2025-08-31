@@ -224,7 +224,6 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
           if (child->i == nq-1)   /* root dfa is the TOP of Q stack */
             *dfa = d;
           child->i = j;        /* from now 'i' map each q[i] to p[j]*/
-          printf(" pushed %d", bit|base);
           stack_push (cache, child);                /* Cache of q[i]*/
           stack_free (child->bits); child->bits = NULL;
         #if !defined(__clang__) && !defined(__GNUC__)
@@ -262,7 +261,7 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
         if ( (c = nfa[m]->id) < 256 && c >= 0 && !next[c] ) {
           if (s[n]->next[c] == NULL) return RGXERR;
           next[c] = p [ s[n]->next[c]->i ];
-          printf ("\n{d(%d,%c) = %d}", j, (char) c, s[n]->next[c]->i);
+          //printf ("\n{d(%d,%c) = %d}", j, (char) c, s[n]->next[c]->i);
         }
         else if (c == NFAACC) {
           stack_push (tokens, nfa[m]);
@@ -363,13 +362,13 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
         for ( int l=0; l<W->len/sizeof(void *); ++l) {
           SAME ( Y, w[l], issame );
           if (issame) {                            /* if (Y ∈ W)    */
-            FREE (w[l]); w[l] = COPY (Y1) ; PUSH (W, COPY(Y2));
+            /*FREE (w[l]);*/ w[l] = COPY (Y1) ; PUSH (W, COPY(Y2));
             k = l; break;
           }
         }
         if (k<0)                                   /* if (Y ∉ W)    */
           PUSH ( W, count1 <= count2 ? COPY(Y1) : COPY(Y2) );
-        FREE ( Y );
+        /*FREE ( Y );*/
       }
     }
   }
@@ -380,13 +379,12 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   .. (ii)  p_i ∩ p_j = ∅ iff i ≠ j
   .. (iii) collectively exhaustive, i.e,  union of p_i is Q
   */
-
   stack_free(W); stack_free (pool);
   int np = P->len/sizeof (void *); printf ("|Q'| %d", np);
   dfa [0] = q[nq-1];
   DState * _d;
   int rval = ( nq == np ) ? 0 :
-    ( nq > np ) ?  dfa_minimal( Q, P, dfa+1 ) :
+    ( nq > np ) ?  dfa_minimal( Q, P, dfa) :
     RGXERR;                              /* |P(Q)| should be <= |Q| */
   RTN (rval);
 
@@ -439,26 +437,14 @@ int rgx_dfa ( char * rgx, DState ** dfa ) {
 int rgx_dfa_match ( DState * dfa, const char * txt ) {
   const char *start = txt, *end = NULL;
   DState * d = dfa;
-  //Stack * tokens = NULL;
   int c;
-  if (RGXMATCH (d))  end = txt; // {tokens = d->list; }
+  if (RGXMATCH (d))  end = txt;
   while ( (c = 0xFF & *txt++) ) {
     if ( d->next[c] == NULL )
       break;
     d = d->next[c];
-    if (RGXMATCH (d))  end = txt; // { tokens = d->list; }
-    //printf ("\n[%c %d]", (char) c, end ? (int) (end-start) : -1 );
+    if (RGXMATCH (d))  end = txt;
   }
-  /*
-  if(end) {
-    int n = tokens->len / sizeof (void *);
-    State ** f = (State **) tokens->stack;
-    printf ("\n Token {");
-    for (int i=0; i<n; ++i) 
-      printf (" %d ", state_token (f[i]));
-    printf ("}");
-  }
-  */
   /* return val = number of chars that match rgx + 1 */
   return end ? (int) ( end - start + 1) : 0;
 }

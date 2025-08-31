@@ -17,13 +17,13 @@ int main () {
 
     char * rgx = rgxlist[i];
 
-    DState * dfa[2] =  { NULL } ;
-    int status = rgx_dfa ( rgx, dfa );
+    DState * dfa = NULL;
+    int status = rgx_dfa ( rgx, &dfa );
     if (status < 0) { printf ("_Error"); break; }
     printf ("\n Looking for rgx pattern Regex %s", rgx);
     const char * source = txt;
     do {
-      int m = rgx_dfa_match (dfa [status > 0], source);
+      int m = rgx_dfa_match (dfa, source);
       if (m < 0) printf ("failed in match check %d", m);
       //source += m > 1 ? (m-1)
       if (m > 0) {

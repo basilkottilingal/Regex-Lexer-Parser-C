@@ -11,11 +11,8 @@
 #include "stack.h"
 
 int main () {
-  //char * rgx[] = { "(aa|b)|(a(a|b))|(bc*)|(bc+)|(1?)|((a|b)+0)" };
-  //char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
-  char * rgx[] = { "aa|b", "bc*", "1?"};
+  char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
   const char txt[] = "aaccbqaabbaba01bcccd";
-  //const char txt[] = "aacccccccc";
   char buff[60];
   Stack * stk = stack_new (0);
   printf ("Regex group ");
@@ -23,14 +20,14 @@ int main () {
     printf ("\"%s\" ", rgx[i]);
     stack_push (stk, rgx[i]);
   }
-  DState * dfa[2] = { NULL };
-  int status = rgx_list_dfa (stk, dfa);
+  DState * dfa = NULL;
+  int status = rgx_list_dfa (stk, &dfa);
   if (status < RGXEOE)  
     printf ("failed in creating NFAi for rgx group"); 
 
   const char * source = txt;
   if (status > 0 ) do {
-    int m = rgx_dfa_match (dfa[1], source);
+    int m = rgx_dfa_match (dfa, source);
     if (m < 0) printf ("failed in match check %d", m); 
     //source += m > 1 ? (m-1) 
     if (m > 0) {

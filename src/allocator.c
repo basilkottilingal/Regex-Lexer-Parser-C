@@ -10,7 +10,8 @@ typedef struct Block {
   char * head;
 } Block ;
 
-Block * BlockHead = NULL, * FreeHead = NULL;
+Block * BlockHead = NULL; 
+void ** Bin = NULL;
 static Block * block_new ( void ) {
   size_t s = BLOCK_SIZE;
   void * mem = NULL;
@@ -28,6 +29,11 @@ static Block * block_new ( void ) {
     .allocsize = s,
     .head = (char *) mem + bsize
   };
+  if (!Bin) {
+    Bin = (void **) block->head;
+    block->head += 256;
+  }
+  block->size = 
   return (BlockHead = block);
 }
 
@@ -36,7 +42,7 @@ static int block_available (size_t s) {
   return ( BlockHead && ( BlockHead->size > s ) );
 }
 
-void deallocate () {
+void destroy () {
   while ( BlockHead ){
     Block * next = BlockHead->next;
     free ( BlockHead );
@@ -62,12 +68,4 @@ char * allocate_str ( const char * s ) {
   char * str  = allocate (size);
   memcpy (str, s, size);
   return str;
-}
-
-void allocate_stack () {
-  /* fixme  */
-}
-
-void allocate_unstack () {
-  /* fixme  */
 }

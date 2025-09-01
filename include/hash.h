@@ -1,33 +1,23 @@
-#ifndef HASH_SIZE
-  #define HASH_SIZE 64
+#ifndef _HASH_H_
+#define _HASH_H_
+
+  typedef struct Key {
+    struct Key * next;
+    char       * key;
+    void       * value;
+    uint32_t     hash;
+  } Key;
+
+  /*
+  .. Hashtable, resizes automatically when, the number of 
+  .. inserted keys, 'n', exceeds 0.5 hsize.
+  */
+  typedef struct Table {
+    int hsize, n;
+    Key ** table;
+  };
+  
+  Key ** hash_table  ( int n );
+  Key ** hash_lookup ( Table * t, char * key );
+  int    hash_insert ( Table * t, char * key, void * value ); 
 #endif
-
-static int rule_id = 0;
-
-typedef struct Rule {
-  struct Rule * next;
-  char * name;
-  int id;
-} Rule;
-
-Rule * Rules [HASH_SIZE] = {0};
-
-static
-unsigned bucket_index (const char * str) {
-  unsigned h = 5381;
-  while ( *str )
-    h = ((h << 5) + h) + (unsigned char)(*str++);
-  return h % HASH_SIZE;
-}
-
-Rule * rule_new ( const char * name ) {
-  unsigned idx = bucket_index ( name );
-  Rule * r =  Rules [idx] ;
-  while (r) { 
-    assert ( strcmp(r->name, name) );
-    r = r->next;
-  }
-  r = allocate ( sizeof (Rule) );
-  *r = (Rule) { .id = rule_id++, .name = allocate_str (name), .next = Rules[idx] };
-  return ( Rules[idx] = r );
-}

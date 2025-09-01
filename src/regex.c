@@ -30,8 +30,7 @@ static int rgx_input ( char ** str ) {
   .. If you want the regex to represent tokens with
   .. unicode characters, use "\uXXXX".
   .. Non printable characters ASCII [0,32)
-
-  .. are taken as regex string breaker
+  .. are taken as end of regex expression
   */
   char c = *(*str)++;
   return RGXCHR(c);
@@ -184,10 +183,10 @@ typedef struct iStack {
 int rgx_rpn ( char * s, int ** rpn ) {
 
   #define  PUSH(_s_,_c_)        ( _s_.n == _s_.max ? \
-     (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_))
-  #define  TOP(_s_)              ( _s_.n ? _s_.a[_s_.n - 1] : '\0' )
-  #define  POP(_s_)              ( _s_.n ? _s_.a[--_s_.n] : '\0' )
-  #define  STACK(_a_,_m_)     (iStack) {.a = _a_, .n = 0, .max = _m_}
+    (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_))
+  #define  TOP(_s_)             ( _s_.n ? _s_.a[_s_.n - 1] : '\0' )
+  #define  POP(_s_)             ( _s_.n ? _s_.a[--_s_.n] : '\0' )
+  #define  STACK(_a_,_m_)       (iStack) {.a = _a_, .n = 0, .max = _m_}
   #define  RTN(_s_,_c_)         if (PUSH(_s_,_c_)<RGXEOE) return TOP(_s_)
   #define  OPERATOR(_c_)        RTN(ostack,_c_); last = RGXOPR;
   #define  OPERAND(_c_)         RTN(stack,_c_);  last = RGXOPD;
@@ -321,6 +320,6 @@ int rgx_rpn ( char * s, int ** rpn ) {
 }
 
 void rgx_free () {
-  deallocate ();
+  destroy ();
 }
 

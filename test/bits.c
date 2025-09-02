@@ -21,7 +21,7 @@ int main () {
   printf (" ]"
           "\nNumber of ON bits: %d. Array len %d : "
           "\nParsing bit stack      [", s->nentries, s->len);
-  uint64_t * bits = (uint64_t *) s->stack, i, j;
+  uint64_t * bits = (uint64_t *) s->stack, i;
   for (int k = 0; k < s->len >> 3; ++k)
   {
     int base = k << 6;

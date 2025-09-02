@@ -7,6 +7,7 @@
 #include "regex.h"
 #include "allocator.h"
 #include "stack.h"
+#include "bits.h"
 
 /*
 .. Functions and objects required for creating a
@@ -16,18 +17,16 @@
 typedef struct DState {
   Stack * list;
   struct DState * next [256];
-  union {
-    struct DState * child[2];
-    struct DState * hchain;
-  };
+  struct DState * hchain;
   Stack * bits;
-  uint32_t hash;
   int i, flag;
+  int token;                              /* preferred token number */
+  uint32_t hash;
 } Dstate;
 
 static int       nstates = 0;              /* Number of Dfa states. */
 
-#define BITBYTES(_b) ( (_b + 63 & ~ (int) 63) >> 3 )
+#define BITBYTES(_b) ( ((_b + 63) & ~(int)63) >> 3 )
 
 static DState ** htable  = NULL;                /* Uses a hashtable */
 static int       hsize;                /* fixme : use prime numbers */
@@ -120,7 +119,7 @@ rgx_dfa_tree ( DState * root, Stack ** states ) {
     while ((s = stack[n-1].n ? stack[n-1].s[--stack[n-1].n] : NULL)) {
                                    /* iterate each nfa of dfa cache */
       dfa = stack[n-1].d;
-      int c = s->id;
+      c = s->id;
       if (c < 256 && dfa->next[c] == NULL ) {
         if (states_transition (dfa->list, list, buff, c) < 0) {
           RTN (RGXERR);
@@ -195,15 +194,14 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
   .. New dfa set Q' from P.
   .. Use same hash table. Faster than O(n.n) bit comparison
   */
-  *dfa = NULL;
-  uint64_t i64, ** bitstack = (uint64_t **) P->stack, * Y, *y;
-  uint32_t hash;
+  uint64_t i64, ** bitstack = (uint64_t **) P->stack, * Y;
   int nq = Q->len/sizeof (void *), np = P->len/sizeof (void *),
     qsize = BITBYTES (nq);
   DState * d, ** next, * child,                        /* iterators */
     ** p =  (hsize < np) ? allocate ( np * sizeof (DState *) ) :
       memset ( htable, 0, np * sizeof (DState *) ), /* reuse htable */
-    ** q = (DState **) Q->stack;                /* original dstates */
+    ** q = (DState **) Q->stack,                /* original dstates */
+    * _q0 = NULL;
   Stack * cache = stack_new (0);
 
   for (int j=0; j<np; ++j) {                  /* each j in [0, |P|) */
@@ -215,23 +213,16 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
       int base = k << 6, bit = 0;
       i64 = Y[k];
       while (i64) {
-        #if defined(__clang__) || defined(__GNUC__)
         bit = __builtin_ctzll(i64);       /* position of lowest bit */
-        #else
-        if ( i64 & (uint64_t) 0x1 ) {
-        #endif
-          child = q [bit|base];
-          if (child->i == nq-1)   /* root dfa is the TOP of Q stack */
-            *dfa = d;
-          child->i = j;        /* from now 'i' map each q[i] to p[j]*/
-          stack_push (cache, child);                /* Cache of q[i]*/
-          stack_free (child->bits); child->bits = NULL;
-        #if !defined(__clang__) && !defined(__GNUC__)
-        }
-        i64 >>= 1; ++bit;                      /* Iterate each bit. */
-        #else
+          
+        child = q [bit|base];
+        if (child->i == nq-1)     /* root dfa is the TOP of Q stack */
+          _q0 = d;                   /* root of the new DFA tree Q' */
+        child->i = j;          /* from now 'i' map each q[i] to p[j]*/
+        stack_push (cache, child);                  /* Cache of q[i]*/
+        stack_free (child->bits); child->bits = NULL;
+
         i64 &= (i64 - 1);                   /* clear lowest set bit */
-        #endif
       }
     }
 
@@ -242,14 +233,21 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
   }
   stack_free (cache);
 
+  if(!_q0) return RGXERR;
+  *dfa = _q0;
+
   /*
-  .. Creating the transition for each p[i]
+  .. (b) Creating the transition for each p[i]
+  .. (b) Identifying accepting states of Q'. Lowest token number
+  ..     will be assigned to q->token for all q in Q'.
+  ..     ( Assumes : lower the itoken, more the precedence )
   */
 
-  int c, n, m;
-  Stack * tokens = stack_new (0);
+  int c, n, m, token;
   for (int j=0; j<np; ++j) {
     d = p[j];
+    d->token = INT_MAX;
+    RGXMATCH (d) = 0;
     cache = d->list;
     DState ** s = (DState **) cache->stack;
     n = cache->len / sizeof (void *);
@@ -261,24 +259,21 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
         if ( (c = nfa[m]->id) < 256 && c >= 0 && !next[c] ) {
           if (s[n]->next[c] == NULL) return RGXERR;
           next[c] = p [ s[n]->next[c]->i ];
-          //printf ("\n{d(%d,%c) = %d}", j, (char) c, s[n]->next[c]->i);
+          //printf ("\n{d(%d,%c)=%d}", j, (char) c, s[n]->next[c]->i);
         }
         else if (c == NFAACC) {
-          stack_push (tokens, nfa[m]);
+          RGXMATCH (d) = 1;
+          token = state_token (nfa[m]);
+          if (token < d->token)     /* assumes itoken in decr order */
+            d->token = token; 
         }
       }
       stack_free (s[n]->list); s[n]->list = NULL;
     }
     stack_free (cache); d->list = NULL;
-    if (tokens->len) {
-      d->list = stack_copy (tokens);
-      stack_reset (tokens);
-      RGXMATCH (d) = 1;
-    }
   }
-  stack_free (tokens);
 
-  return (!*dfa) ? RGXERR : 1;
+  return 1;
 }
 
 /*
@@ -334,8 +329,8 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   char alphabets[] = "abcqd01"; /* fixme : use [0,256)*/
   while (W->len) {                                 /* while |W| > 0 */
     uint64_t * A = POP (W);                        /* A <- POP (W)  */
-    int j = 0; char c;
-    while ( (c = alphabets[j++]) != '\0') {        /* each c in Σ   */
+    int j = 0, c;
+    while ( (c = (int) alphabets[j++]) != '\0') {  /* each c in Σ   */
       BITCLEAR (X);
       int k = 0;
       for (int i=0; i<nq; ++i) {
@@ -382,7 +377,6 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   stack_free(W); stack_free (pool);
   int np = P->len/sizeof (void *); printf ("|Q'| %d", np);
   dfa [0] = q[nq-1];
-  DState * _d;
   int rval = ( nq == np ) ? 0 :
     ( nq > np ) ?  dfa_minimal( Q, P, dfa) :
     RGXERR;                              /* |P(Q)| should be <= |Q| */

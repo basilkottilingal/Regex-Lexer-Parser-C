@@ -1,13 +1,13 @@
 CC     = gcc
-CFLAGS = -Iinclude
+CFLAGS = -Iinclude -Wall
+C99    = -std=c99 -pedantic
 
-RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c 
+RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c src/bits.c 
 OBJ    = $(patsubst src/%.c, obj/%.o, $(RGX))
 TST    = test/nfa.c test/dfa.c test/bits.c test/tokens-nfa.c test/min-dfa.c test/hopcroft.c test/stack.c
 RUN    = $(patsubst test/%.c, obj/%.tst, $(TST))
 
-$(RUN) $(OBJ) $(LOBJ): | obj
-$(LOBJ) : CFLAGS += -DRGXLRG
+$(RUN) $(OBJ): | obj
 obj:
 	mkdir -p obj
 

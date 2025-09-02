@@ -19,12 +19,12 @@
   .. (a) "destroy" all mem blocks. Call @ the end of pgm
   .. (b) "allocate" memory. max 4088 Bytes. (Rounded to 8 bytes. Maybe unnecessary)
   .. (c) "allocate_str" : equivalent to strdup ()
-  .. (d) "deallocate" a memory to proper bin.
-  .. 
+  .. (d) "deallocate" a memory for reuse. size also should be passed correctly.
+  .. (e) "reallocate" from an older size to a newer size. Copy old content also.
   */
   void   destroy ();
   void * allocate ( size_t size );
   char * allocate_str ( const char * s );
   void   deallocate ( void *, size_t );
-  void   reallocate ( void *, size_t, size_t );
+  void * reallocate ( void *, size_t, size_t );
 #endif

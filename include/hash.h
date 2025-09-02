@@ -18,6 +18,6 @@
   };
   
   Key ** hash_table  ( int n );
-  Key ** hash_lookup ( Table * t, char * key );
-  int    hash_insert ( Table * t, char * key, void * value ); 
+  Key ** hash_lookup ( Table * t,   char * key );
+  void   hash_insert ( Key ** slot, char * key, void * value ); 
 #endif

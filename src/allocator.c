@@ -1,9 +1,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdint.h>
 
 #include "allocator.h"
 #include "bits.h"
+
+/*
+.. fixme : assumes sizeof(char) == 1
+*/
 
 typedef struct Block {
   struct Block * next, * prev;
@@ -83,12 +88,12 @@ char * allocate_str ( const char * s ) {
 #define ULL unsigned long long
 
 static inline int floorlog2 ( ULL k ) {
-  /* n = ⌊ log2 (k) ⌋. i.e max of n, with 2^n <= k */
+  /* ⌊ log2 (k) ⌋ */
   return ULL_BITS - __builtin_clz (k);          
 }
 
 static inline int ceillog2 ( ULL k ) {
-  /* n = ⌈ log2 (k) ⌉. i.e min of n, with 2^n >= k */
+  /* ⌈ log2 (k) ⌉ */
   return 1ull + ULL_BITS - __builtin_clz (k - 1ull);
 }
 
@@ -108,15 +113,12 @@ void deallocate ( void * m, size_t olds ) {
 }
 
 void * reallocate ( void * m, size_t olds, size_t s ) {
-  void * t = allocate (s);
-  if (m) {
-    memcpy (t, m, olds);
-    deallocate (m, olds);
+  if ( olds >= s ) {
+    memset ( (uint8_t *)m + s, 0, olds - s);
+    return m;                                      /* Not expanding */
   }
+  void * t = allocate (s);              /* New, larger memory chunk */
+  memcpy (t, m, olds);
+  deallocate (m, olds);
   return t;
 }
-
-
-
-
-

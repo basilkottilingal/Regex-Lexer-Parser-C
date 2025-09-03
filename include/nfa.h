@@ -21,7 +21,8 @@
   int states_transition ( Stack * from,  Stack * to,   State *** buff, int c );
   int states_bstack     ( Stack * list,  Stack * bits );
   int state_token       ( State * f );
-  int state_reset       ();
+  void state_reset       ();
+  int rgx_len           ();
 
   #define RGXMATCH(_s_) (_s_)->flag
 

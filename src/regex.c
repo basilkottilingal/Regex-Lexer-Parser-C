@@ -209,7 +209,7 @@ int rgx_rpn ( char * s, int ** rpn ) {
       stack.a[stack.n] = RGXEOE;
       *rpn = allocate ( (stack.n+1) * sizeof (int) );
       memcpy ( *rpn, RGXRPN,  (stack.n+1) * sizeof (int) );
-      return RGXEOE;
+      return *rgx - s;
     }
     if ( op <= 0 ) {
       stack.a[stack.n] = RGXERR;

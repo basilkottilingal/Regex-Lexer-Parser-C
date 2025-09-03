@@ -30,7 +30,7 @@ typedef struct Fragment {
 
 static int state_number = 0;
 
-int state_reset () {
+void state_reset () {
   state_number = 0;
 }
 
@@ -82,6 +82,12 @@ static void concatenate ( Dangling * d, State * s ) {
   }
 }
 
+static int rgxlen;
+
+int rgx_len ( ) {
+  return rgxlen;
+}
+
 int rgx_nfa ( char * rgx, State ** start, int itoken ) {
 
   #define  STT(_f_,_a,_b) s = state (_f_,_a,_b); if(s == NULL) return RGXOOM
@@ -91,8 +97,8 @@ int rgx_nfa ( char * rgx, State ** start, int itoken ) {
 
   //state_number = 0;
   int nstates = state_number;
-  int * rpn = NULL, status;
-  if ( (status = rgx_rpn (rgx, &rpn)) < RGXEOE ) return status;
+  int * rpn = NULL;
+  if ( (rgxlen = rgx_rpn (rgx, &rpn)) < RGXEOE ) return RGXERR;
   int n = 0, op;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;

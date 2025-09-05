@@ -1,6 +1,8 @@
 #ifndef _LXR_H_
 #define _LXR_H_
 
+  #include "stack.h"
+
   /* 
   .. Available guaranteed buffersize.
   */

@@ -29,11 +29,12 @@
   .. NOTE : 
   .. (a) Lexer will seek for the longest token that match atleast
   ..     one of the regex.
-  .. (b) In case of regex collision, i.e a token that satisfy
-  ..     multiple regex, the first action in the grammar file will
-  ..     be executed.
+  .. (b) In case of regex collision, i.e the longest acceptable 
+  ..     token satisfy multiple regex, the first action in the grammar
+  ..     file will be executed
   .. (c) In grammar file, in each line regex should be followed by
-  ..     by action inside { }
+  ..     by action inside the block { }
+  .. (d) Empty lines are allowed. 
   */
   int lxr_grammar  ( const char * file, Stack * rgxs, Stack * actions);
 

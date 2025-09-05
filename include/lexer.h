@@ -8,13 +8,6 @@
   #define LXR_BUFFSIZE 256
   #endif
 
-  /*
-  .. Puts a limit to the token size limit. 
-  */
-  #ifndef LXR_TKNSIZE
-  #define LXR_TKNSIZE 128
-  #endif
-
   /* 
   .. input source is either a file / string 
   */
@@ -28,8 +21,19 @@
   */
   int lxr_tokenize ( char ** tkn );
 
-  /* Define lexer grammar using regex and action */
-  int lxr_grammar  ( const char * file );
+  /* Read the lexer grammar file that has a list of pair of regex,
+  .. and corresponding action ( once a token that matches a regex is
+  .. found ).
+  .. NOTE : 
+  .. (a) Lexer will seek for the longest token that match atleast
+  ..     one of the regex.
+  .. (b) In case of regex collision, i.e a token that satisfy
+  ..     multiple regex, the first action in the grammar file will
+  ..     be executed.
+  .. (c) In grammar file, in each line regex should be followed by
+  ..     by action inside { }
+  */
+  int lxr_grammar  ( const char * file, Stack * rgxs, Stack * actions);
 
   /*
   .. read a char from source. May use to consume

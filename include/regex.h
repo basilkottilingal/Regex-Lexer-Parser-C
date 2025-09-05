@@ -39,11 +39,13 @@
   ..      Similar to "rgx_match", but uses minimal "dfa" for "rxg"
   .. (d) int rgx_free ();
   ..      Free allocated memory blocks.
+  .. (e) flush all reported error (if any) to stderr.
   */
   int  rgx_match     ( /*const*/ char * rgx, const char * txt );
   int  rgx_dfa       ( /*const*/ char * rgx, DState ** dfa );
   int  rgx_dfa_match ( DState * dfa,     const char * txt);
-  void rgx_free ();
+  void rgx_free      ( );
+  void errors        ( );
 
   /*
   .. Lower level or internal api. Maybe used for debug
@@ -53,10 +55,12 @@
   ..      expressions "rgx_list".
   ..      List should have the regex ordered int the decreasing preference,
   ..      in case of multiple regex are satisfied by "txt".
+  .. (d) report an error and stack it to the list of error.
   */
   int  rgx_nfa       ( char   * rgx, State ** nfa, int itoken );
   int  rgx_nfa_match ( State  * nfa, const char * txt );
   int  rgx_list_dfa  ( Stack * rgx_list, DState ** dfa );
+  void error         ( const char * err, ... );
 
   enum RGXFLAGS {
 

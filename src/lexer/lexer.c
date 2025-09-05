@@ -8,9 +8,8 @@
 #include "regex.h"
 
 /*
-.. Naive way to look for the end of a regex pattern
-.. which ends with a white space. The regex whill be stored
-.. in the buff
+.. Naive way to look for the regex pattern at the beginning of the 
+.. line. The regex whill be stored in "buff".
 */
 static
 int read_rgx (FILE * fp, char * buff, size_t lim) {
@@ -33,15 +32,29 @@ int read_rgx (FILE * fp, char * buff, size_t lim) {
       charclass = 1;
     else if (c == ']' && charclass )
       charclass = 0;
+    /* White space are taken as end of regex */
     else if ( (c == ' ' || c == '\t') && !charclass) {
-      buff[j] = '\0';
+      buff[--j] = '\0';
+      if ( j == 0 ) {
+        while ( (c = fgetc(fp)) != EOF && c != '\n' ) {
+          if ( !(c == ' '|| c == '\t') )  {
+  error ("lxr grammar: rgx should be at the beginning of the line");
+  return RGXERR; 
+          }
+        }
+        #define EMPTY 10
+        return EMPTY;         /* Empty line, with just white spaces */
+      }
       return 0;
     }
-    else if (c == '\n')
+    else if (c == '\n') {
+      if ( j == 1 )
+        return EMPTY;                                 /* Empty line */
       break;
+    }
   }
-  
-  if (j == 0)
+
+  if ( j == 0 )
     return EOF;
 
   error ("lxr grammar : Incomplete rgx or missing action");
@@ -126,7 +139,7 @@ int read_action (FILE * fp, char * buff, size_t lim, int * line) {
       return RGXERR;
     }
   }
-  return ( c == EOF ) ? 1 : 0;
+  return 0;
 }
 
 int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
@@ -139,7 +152,7 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
   stack_reset (rgxs);
   stack_reset (actions);
 
-  int line = 0, status;
+  int line = 1, status;
   char rgx [256], action [4096];
 
   for (;;) {
@@ -153,6 +166,13 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
 
     if ( status == EOF )
       break;
+  
+    if ( status == EMPTY ) {
+      line++;
+      continue;
+    }
+    
+    #undef EMPTY
 
     stack_push ( rgxs, allocate_str (rgx) );
 

@@ -5,6 +5,7 @@
 
 #include "stack.h"
 #include "allocator.h"
+#include "regex.h"
 
 /*
 .. Naive way to look for the end of a regex pattern
@@ -12,7 +13,7 @@
 .. in the buff
 */
 static
-int read_rgx (FILE * fp, char * buff, size_t lim, int line) {
+int read_rgx (FILE * fp, char * buff, size_t lim) {
   int c, j = 0, escape = 0, charclass = 0;
   while ( (c = fgetc(fp)) != EOF ) {
     buff[j++] = (char) c;
@@ -39,9 +40,11 @@ int read_rgx (FILE * fp, char * buff, size_t lim, int line) {
     else if (c == '\n')
       break;
   }
+  
+  if (j == 0)
+    return EOF;
 
-  error ("lxr grammar : Incomplete rgx or missing "
-    "action. Line %d", line);
+  error ("lxr grammar : Incomplete rgx or missing action");
   return RGXERR;
 }
 
@@ -50,7 +53,6 @@ int read_action (FILE * fp, char * buff, size_t lim, int * line) {
   /* fixme : remove the limit. use realloc() to handle large buffer */
 
   int c, j = 0, depth = 0, quote = 0, escape = 0;
-
   /*
   .. Consume white spaces before encountering '{' i.e start of action.
   .. Warning : Action need to be in the same line as regex.
@@ -62,8 +64,8 @@ int read_action (FILE * fp, char * buff, size_t lim, int * line) {
       break;
     }
     if ( !(c == ' ' || c == '\t' ) ) {
-      error ("lxr grammar : unexpected character "
-        "between regex & action. Line %d", *line);
+      error ("lxr grammar : Unexpected character"
+        "between regex & action");
       return RGXERR;
     }
   }
@@ -107,26 +109,23 @@ int read_action (FILE * fp, char * buff, size_t lim, int * line) {
       }
     }
   }
+  buff[j] = '\0';
 
   if (depth) {
-    error ("lxr grammar : incomplete action. "
-      "Missing '}'. Line %d", *line);
+    error ("lxr grammar : incomplete action. Missing '}'");
     return RGXERR;
   }
 
-  while ( (c = fgetc(fp)) != EOF && c != '\n' ) {
+  while ( (c = fgetc(fp)) != EOF ) {
     if ( c == '\n') {
       (*line)++;
       break;
     }
     if ( ! (c == ' ' || c == '\t' ) ) {
-      error ("lxr grammar : unexpected character "
-        "after action. Line %d", *line);
+      error ("lxr grammar : unexpected character after action");
       return RGXERR;
     }
   }
-
-  buff[j] = '\0';
   return ( c == EOF ) ? 1 : 0;
 }
 
@@ -134,33 +133,37 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
 
   FILE * fp = fopen (file, "r");
   if(!fp) {
-    error ("lxr grammar : cannot open file");
+    error ("lxr grammar : cannot open file: %s", file);
     return RGXERR;
   }
-
   stack_reset (rgxs);
   stack_reset (actions);
 
-  int c = '\0', ns, line = 0, status;
-  char rgx [RGXSIZE], action [4096], buff [256];
+  int line = 0, status;
+  char rgx [256], action [4096];
 
   for (;;) {
     status = read_rgx (fp, rgx, sizeof (rgx)); 
     if ( status == RGXERR ) {
-      error ("lxr grammar : reading rgx failed. File %s", file);
+      error ("lxr grammar : reading rgx failed."
+        "File %s, Line %d", file, line);
       fclose (fp);
       return RGXERR;
     }
+
+    if ( status == EOF )
+      break;
+
     stack_push ( rgxs, allocate_str (rgx) );
 
-    status = read_action (fp, rgx, sizeof (rgx));
+    status = read_action (fp, action, sizeof (action), &line);
     if (status == RGXERR ) {
-      error ("lxr grammar : reading action failed. File %s", file);
+      error ("lxr grammar : reading action failed."
+        "File %s, Line %d", file, line);
       fclose (fp);
       return RGXERR;
     }
     stack_push ( actions, allocate_str (action) );
-
     if (status == 1)
       break;
   }
@@ -169,10 +172,10 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
 
   if (rgxs->len == 0) {
     error ("lxr grammar : Cannot find any rgx-action pair."
-      "File %s", file);
+        "File %s, Line %d", file, line);
     return RGXERR;
   }
 
-  return (0);
+  return 0;
 
 }

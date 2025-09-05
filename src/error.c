@@ -17,14 +17,16 @@ static Error * list = NULL;
 
 void error ( const char * err, ... ) {
   char msg [256];
-  va_list args;      
+  va_list args;
   va_start (args, err);
-  vsnprintf (msg, sizeof (msg), err, args);  
-  va_end(args);      
+  vsnprintf (msg, sizeof (msg), err, args);
+  va_end(args);
 
   Error * e =  allocate (sizeof (Error));
   e->msg = allocate_str (msg);
   e->next = list;
+  
+  list = e;
 }
 
 void errors ( ) {

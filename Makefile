@@ -2,8 +2,10 @@ CC     = gcc
 CFLAGS = -Iinclude -Wall
 C99    = -std=c99 -pedantic
 
-RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c src/bits.c 
+RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c src/bits.c src/error.c
+LXR    = src/lexer/grammar.c src/lexer/lexer.c
 OBJ    = $(patsubst src/%.c, obj/%.o, $(RGX))
+LOBJ   = $(patsubst src/lexer/%.c, obj/%.o, $(LXR))
 TST    = test/nfa.c test/dfa.c test/bits.c test/tokens-nfa.c test/min-dfa.c test/hopcroft.c test/stack.c
 RUN    = $(patsubst test/%.c, obj/%.tst, $(TST))
 

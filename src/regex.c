@@ -41,13 +41,13 @@ static int single_char = 0;
 
 int rgx_token ( char ** str ) {
 
-  #define  TOKEN()         token[0]
-  #define  RTN(_c_)        return ( token[0] = (_c_) )
-  #define  INPUT()         c = rgx_input(str)
-  #define  RGXNXT(_s_)     RGXCHR(*(*_s_))
-  #define  HEX(_c_)        ((_c_ >= '0' && _c_ <= '9') ? (_c_ - '0') :\
-                            (_c_ >= 'a' && _c_ <= 'f') ? (10 + _c_ - 'a') :\
-                            (_c_ >= 'A' && _c_ <= 'F') ? (10 + _c_ - 'A') : 16)
+  #define  TOKEN()        token[0]
+  #define  RTN(_c_)       return ( token[0] = (_c_) )
+  #define  INPUT()        c = rgx_input(str)
+  #define  RGXNXT(_s_)    RGXCHR(*(*_s_))
+  #define  HEX(_c_)      ((_c_ >= '0' && _c_ <= '9') ? (_c_ - '0') :\
+                     (_c_ >= 'a' && _c_ <= 'f') ? (10 + _c_ - 'a') :\
+                  (_c_ >= 'A' && _c_ <= 'F') ? (10 + _c_ - 'A') : 16)
   int c;
   switch ( (INPUT()) ) {
     case '\0' : RTN (RGXEOE);
@@ -202,7 +202,6 @@ int rgx_rpn ( char * s, int ** rpn ) {
   int op, last = RGXBGN, *range = &token[1];
   while ( ( op = TOP (queue) ? POP (queue) : rgx_token (rgx) ) ) {
     if ( op == RGXEOE ) {
-      int depth = 0;
       for (int i=0; i<2 && TOP (ostack); ++i)
         RTN (stack, POP(ostack));
       if (TOP (ostack)) return RGXERR;
@@ -310,6 +309,9 @@ int rgx_rpn ( char * s, int ** rpn ) {
       OPERAND (op);
     }
   }
+  
+  return RGXERR;
+
   #undef  POP
   #undef  TOP
   #undef  STACK

@@ -12,10 +12,34 @@
 
 #define ALPH 256
 
-static uint8_t class [ALPH];
+static Stack * classes = NULL;
+static int     nclass  = 0;
 
-int class_init () {
-  memset (class, 0, sizeof (class));
+void class_init () {
+
+  int bytes = BITBYTES (ALPH);    /* can hold a bit-set of 256 bits */
+  nclass = 1;
+  if (!classes) {
+    classes = stack_new (0);
+    uint8_t * mem = allocate ( 8 * bytes );   /* can hold 8 bit-set */
+    for (int i=0; i<8; ++i)
+      stack_push ( classes, & mem[bytes] );
+  }
+
+  uint64_t ** B = (uint64_t ** ) classes->stack;
+  int n = classes->len / sizeof (void *);
+  memset ( B[0], -1, bytes );              /* Set 0xFF on all bytes */
+  for (int i=1; i<n; ++i)
+    BITCLEAR (B[i], bytes);
+
+}
+
+void class_range ( uint64_t * bitset, char a, char b) {
+  char c[] = "ab";
+  if (a>b)
+    c [0] = b, c [1] = a;
+  for (int i = c[0]; i <= c[1]; i++)
+    BITINSERT ( bitset, i );
 }
 
 /*

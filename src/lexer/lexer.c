@@ -8,7 +8,7 @@
 #include "regex.h"
 
 /*
-.. Naive way to look for the regex pattern at the beginning of the 
+.. Naive way to look for the regex pattern at the beginning of the
 .. line. The regex whill be stored in "buff".
 */
 static
@@ -39,7 +39,7 @@ int read_rgx (FILE * fp, char * buff, size_t lim) {
         while ( (c = fgetc(fp)) != EOF && c != '\n' ) {
           if ( !(c == ' '|| c == '\t') )  {
   error ("lxr grammar: rgx should be at the beginning of the line");
-  return RGXERR; 
+  return RGXERR;
           }
         }
         #define EMPTY 10
@@ -156,26 +156,25 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
   char rgx [256], action [4096];
 
   for (;;) {
-    status = read_rgx (fp, rgx, sizeof (rgx)); 
-    if ( status == RGXERR ) {
+    /* Read rgx pattern */
+    status = read_rgx (fp, rgx, sizeof (rgx));
+    if (!status)
+      stack_push ( rgxs, allocate_str (rgx) );
+    else if ( status == EOF )
+      break;
+    else if ( status == EMPTY ) {
+      line++;
+      continue;
+    }
+    else if ( status == RGXERR ) {
       error ("lxr grammar : reading rgx failed."
         "File %s, Line %d", file, line);
       fclose (fp);
       return RGXERR;
     }
-
-    if ( status == EOF )
-      break;
-  
-    if ( status == EMPTY ) {
-      line++;
-      continue;
-    }
-    
     #undef EMPTY
 
-    stack_push ( rgxs, allocate_str (rgx) );
-
+    /* Read the action for the above regex pattern */
     status = read_action (fp, action, sizeof (action), &line);
     if (status == RGXERR ) {
       error ("lxr grammar : reading action failed."
@@ -184,18 +183,65 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
       return RGXERR;
     }
     stack_push ( actions, allocate_str (action) );
-    if (status == 1)
-      break;
   }
 
   fclose (fp);
-
   if (rgxs->len == 0) {
     error ("lxr grammar : Cannot find any rgx-action pair."
         "File %s, Line %d", file, line);
     return RGXERR;
   }
+  return 0;
+}
+
+/*
+.. This is the main function, that read a lexer grammar and
+.. create a new source generator, that contains lxr() function
+.. which can be used to tokenize a source file.
+*/
+int lxr_generator (const char * grammar, const char * output ){
+
+  FILE * fp = output ? fopen (output, "w") : stdout;
+  if ( !grammar || !fp ) {
+    error ("lxr generator : aborted");
+    return RGXERR;
+  }
+
+  Stack * r = stack_new (0), * a = stack_new (0);
+  if (lxr_grammar (grammar, r, a)) {
+    error ("lxr generator : reading grammar failed");
+    return RGXERR;
+  }
+
+  DState * dfa = NULL;
+  if (rgx_list_dfa (r, &dfa) < 0) {
+    error ("failed to create a minimal dfa");
+    return RGXERR;
+  }
+
+  fprintf (stdout, "\n static int lxr_table [] ");
+  fprintf (stdout, "\n static int lxr_next [] ");
+  fprintf (stdout, "\n static int lxr_accept [] ");
+
+  fprintf (stdout, "\n  while ( (c = lxr_input) != EOF ) { "
+    "\n    if (accept) {"
+    "\n      last = lxr_accept [ ]"
+    "\n    }");
+
+  int n = a->len / sizeof (void *);
+  char ** action = (char **) a->stack;
+  for (int i=0; i<n; ++i) {
+    fprintf (stdout, "\n  case %d :"
+      "\n    %s"
+      "\n    break;",
+      i, action [i]);
+  }
+  fprintf (stdout, "\n  default : "
+    "\n    fprintf (stderr, \"lxr aborted\");"
+    "\n    fflush (stderr); "
+    "\n    exit (EXIT_FAILURE);" );
+
+  if (output) fclose (fp);
 
   return 0;
-
 }

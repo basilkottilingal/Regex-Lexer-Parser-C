@@ -37,6 +37,7 @@
   .. (d) Empty lines are allowed. 
   */
   int lxr_grammar  ( const char * file, Stack * rgxs, Stack * actions);
+  int lxr_generator  ( const char * file, const char * output);
 
   /*
   .. read a char from source. May use to consume

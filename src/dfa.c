@@ -26,7 +26,6 @@ typedef struct DState {
 
 static int       nstates = 0;              /* Number of Dfa states. */
 
-#define BITBYTES(_b) ( ((_b + 63) & ~(int)63) >> 3 )
 
 static DState ** htable  = NULL;                /* Uses a hashtable */
 static int       hsize;                /* fixme : use prime numbers */
@@ -148,40 +147,11 @@ rgx_dfa_tree ( DState * root, Stack ** states ) {
   #undef RTN
 }
 
-  #define BITCLEAR(B)       memset (B, 0, qsize);
-  #define LOOKUP(B,b)                                                \
-    ( B[(b)>>6] &  ((uint64_t) 1 << ((b) & (int) 63)))
-  #define INSERT(B,b)                                                \
-      B[(b)>>6] |= ((uint64_t) 1 << ((b) & (int) 63))
-  #define MINUS(_u,_v,_w)                                            \
-    for (int _i = 0; _i < (qsize>>3); ++_i) {                        \
-      _w[_i] = _u[_i] & ~_v[_i];                                     \
-    }
-  #define AND(_u,_v,_w,_c)  do { _c = 0;                             \
-    for (int _i = 0; _i < (qsize>>3); ++_i) {                        \
-      _c |= (_w[_i] = _u[_i] & _v[_i]) != 0;                         \
-    } } while (0)
-  #define SAME(_u,_v,_c)    do { _c = 1;                             \
-    for (int _i = 0; _c && _i < (qsize>>3); ++_i) {                  \
-      _c = (_u[_i] == _v[_i]);                                       \
-    } } while (0)
-  #define POP(B)            ( B->len == 0 ? NULL :                   \
+  #define POP(B)          ( B->len == 0 ? NULL :                     \
     ((uint64_t **) B->stack)                                         \
     [ (B->len -= sizeof (void *))/sizeof(void *) ] )
   #define PUSH(S,B)       stack_push (S, B)
-  #if defined(__GNUC__) || defined(__clang__)
-  #define COUNT(B,_c)       do { _c = 0;                             \
-    for (int _i = 0; _i < (qsize>>3); ++_i) {                        \
-      _c += __builtin_popcountll( B[_i] );                           \
-    } } while (0)
-  #else
-  #define COUNT(B,c)        do { c = 0;                              \
-    for (int _i = 0; _i < (qsize>>3); ++_i) {                        \
-      uint64_t b64 = B[_i];                                          \
-      while (b64) { b64 &= (b64-1); ++c;}                            \
-    } } while (0)
-  #endif
-  #define FREE(B)         BITCLEAR (B); PUSH (pool, B)
+  #define FREE(B,s)       BITCLEAR (B,s); PUSH (pool, B)
   #define BSTACK(B)       uint64_t * B =                             \
     pool->len ? POP(pool) : allocate (qsize)
   #define STACK(S)        Stack * S = stack_new (0)
@@ -294,10 +264,10 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   int count1 = 0, count2 = 0;
   for (int i=0; i<nq; ++i) {
     if (RGXMATCH (q[i])) {
-      INSERT (F, i);  count1++; /* F := { q in Q | q is accepting } */
+      BITINSERT (F, i);  count1++; /* F := { q in Q | q is accepting } */
     }
     else {
-      INSERT (Q_F, i); count2++;                             /* Q\F */
+      BITINSERT (Q_F, i); count2++;                             /* Q\F */
     }
   }
   if (!count1) return RGXERR;
@@ -330,11 +300,11 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
     uint64_t * A = POP (W);                        /* A <- POP (W)  */
     int j = 0, c;
     while ( (c = (int) alphabets[j++]) != '\0') {  /* each c in Σ   */
-      BITCLEAR (X);
+      BITCLEAR (X, qsize);
       int k = 0;
       for (int i=0; i<nq; ++i) {
-        if( (next = q[i]->next[c]) && LOOKUP(A, next->i) ) {
-          k++; INSERT (X, i);      /* X <- { q in Q | δ(q,c) in A } */
+        if( (next = q[i]->next[c]) && BITLOOKUP (A, next->i) ) {
+          k++; BITINSERT (X, i);   /* X <- { q in Q | δ(q,c) in A } */
         }
       }
       if (!k) continue;
@@ -343,18 +313,18 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
         uint64_t ** y = (uint64_t **) P->stack,
           ** w = (uint64_t **) W->stack;
         uint64_t * Y = y [i];
-        AND   ( Y, X, Y1, k );                     /* Y1 <- Y ∩ X   */
+        BITAND ( Y, X, Y1, k, qsize );             /* Y1 <- Y ∩ X   */
         if (!k) continue;                          /* Y ∩ X = ∅     */
-        MINUS ( Y, X, Y2 );                        /* Y2 <- Y \ X   */
-        COUNT (Y1, count1);                        /* |Y1|          */
-        COUNT (Y2, count2);                        /* |Y2|          */
+        BITMINUS ( Y, X, Y2, qsize );              /* Y2 <- Y \ X   */
+        BITCOUNT ( Y1, count1, qsize );            /* |Y1|          */
+        BITCOUNT ( Y2, count2, qsize );            /* |Y2|          */
         if ( !count2 ) continue;                   /* Y \ X = ∅     */
-        y [i] = COPY(Y1);
-        PUSH ( P, COPY(Y2) );
+        y [i] = COPY (Y1);
+        PUSH ( P, COPY (Y2) );
         k = -1;
         int issame;
         for ( int l=0; l<W->len/sizeof(void *); ++l) {
-          SAME ( Y, w[l], issame );
+          BITCMP ( Y, w[l], issame, qsize );
           if (issame) {                            /* if (Y ∈ W)    */
             /*FREE (w[l]);*/ w[l] = COPY (Y1) ; PUSH (W, COPY(Y2));
             k = l; break;
@@ -386,16 +356,11 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
 }
 
   #undef BSTACK
-  #undef LOOKUP
-  #undef INSERT
-  #undef SAME
-  #undef AND
   #undef POP
+  #undef FREE
   #undef PUSH
   #undef STACK
-  #undef COUNT
-  #undef MINUS
-  #undef BITBYTES
+  #undef COPY
 
 int rgx_list_dfa ( Stack * list, DState ** dfa ) {
   int nr = list->len / sizeof (void *);

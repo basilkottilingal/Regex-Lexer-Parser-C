@@ -259,7 +259,6 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
         if ( (c = nfa[m]->id) < 256 && c >= 0 && !next[c] ) {
           if (s[n]->next[c] == NULL) return RGXERR;
           next[c] = p [ s[n]->next[c]->i ];
-          //printf ("\n{d(%d,%c)=%d}", j, (char) c, s[n]->next[c]->i);
         }
         else if (c == NFAACC) {
           RGXMATCH (d) = 1;
@@ -398,8 +397,6 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   #undef MINUS
   #undef BITBYTES
 
-
-
 int rgx_list_dfa ( Stack * list, DState ** dfa ) {
   int nr = list->len / sizeof (void *);
   char ** rgx = (char ** ) list->stack;
@@ -408,7 +405,7 @@ int rgx_list_dfa ( Stack * list, DState ** dfa ) {
   int n, nt = 0;
   state_reset ();
   for (int i=0; i<nr; ++i) {
-    n = rgx_nfa (rgx[i], &out[i], i);
+    n = rgx_nfa (rgx[i], &out[i], i+1);/* itoken 0, reserved for err*/
     if ( n < 0 ) return RGXERR;
     nt += n;
   }

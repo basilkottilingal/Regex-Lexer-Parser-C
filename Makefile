@@ -54,3 +54,4 @@ all: obj/rgx.a
 	$(MAKE) obj/hopcroft.tst
 	$(MAKE) obj/hopcroft.tst
 	$(MAKE) obj/tokens-nfa.tst
+	$(MAKE) obj/lxrgrammar.ltst

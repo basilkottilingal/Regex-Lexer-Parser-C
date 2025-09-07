@@ -1,91 +1,118 @@
 /*
 .. Given an NFA (Q, Σ, δ, q0 , F ) there exists
 .. atleast one partition P (Σ), which satisfy the condition ( cond-1 )
-..   ∀ p ∈ P, and c, c′ ∈ p   ⇒   δ(q, c) = δ(q, c′)  ∀  q ∈ Q
+..   ∀ p[i] ∈ P and c, c′ ∈ p[i]   ⇒   δ(q, c) = δ(q, c′)  ∀  q ∈ Q
 .. Now, the equivalence class is the function
-..   C(c) : Σ → {0, 1, ..., |P | − 1} which maps c to p
+..   C(c) : Σ → {0, 1, ..., |P| − 1} which maps c to p[i]
 .. i.e.
-..   C(c) = i ⇐⇒ c ∈ p
+..   C(c) = i ⇐⇒ c ∈ p[i]
 .. Our aim is to look for the coarsest partition, or the one
 .. that satisfy above condition (cond-1) and minimises |P(Σ)|.
+..
+.. We initialize ( class_init() )  with
+.. P ← {Σ}
+.. for each character group S, we refine P ( class_refine() ) as :
+..    P ← { Y ∩ S, Y ∖ S ∣ X ∈ P } ∖ { ∅ }
+..
+.. In the above algorithm, S, is a character set
+.. like [a-z], [^0-9], etc.
+.. Neglect intersection set or difference set, if empty.
 */
 
 #define ALPH 256
+#define END  -1
 
-static Stack * classes = NULL;
-static int     nclass  = 0;
+#include <string.h>
+#include <assert.h>
+
+#include "class.h"
+
+/*
+.. head and next are used to maintain a linked list of characters in
+.. an equivalence class. END is used to mark the end of the list
+*/
+static int next [ALPH], head [ALPH];
+
+/*
+.. class is the mapping C(c) from [0,256) -> [0, nclass).
+.. nclass is the number of equivalence classes.
+.. nclass = max(C) + 1 = |P|
+*/
+static int class [ALPH], nclass = 0;
+
+void class_get ( int ** c, int * n ) {
+  *c = class; *n = nclass;
+}
 
 void class_init () {
 
-  int bytes = BITBYTES (ALPH);    /* can hold a bit-set of 256 bits */
+  /*
+  .. Initialize with just one equivalence class : P ← {Σ}
+  .. and C(c) = 0 ∀ c in Σ
+  */
+
   nclass = 1;
-  if (!classes) {
-    classes = stack_new (0);
-    uint8_t * mem = allocate ( 8 * bytes );   /* can hold 8 bit-set */
-    for (int i=0; i<8; ++i)
-      stack_push ( classes, & mem[bytes] );
-  }
-
-  uint64_t ** B = (uint64_t ** ) classes->stack;
-  int n = classes->len / sizeof (void *);
-  memset ( B[0], -1, bytes );              /* Set 0xFF on all bytes */
-  for (int i=1; i<n; ++i)
-    BITCLEAR (B[i], bytes);
+  memset (class, 0, sizeof (class));
+  head [0] = 0;
+  for(int i=0; i<ALPH-1; ++i)
+    next [i] = i+1;
+  next [ALPH-1] = END;
 
 }
 
-void class_range ( uint64_t * bitset, char a, char b) {
-  char c[] = "ab";
-  if (a>b)
-    c [0] = b, c [1] = a;
-  for (int i = c[0]; i <= c[1]; i++)
-    BITINSERT ( bitset, i );
-}
 
-/*
-void refine_class(int *is_selected) {
-  int old_to_new[ALPHABET];
-  memset(old_to_new, -1, sizeof(old_to_new));
-  int new_class = num_classes;
-  for (int c = 0; c < ALPHABET; c++) {
-    int cls = equiv_class[c];
-    int select = is_selected[c];
-    if (select) {
-      // If first time splitting this class
-      if (old_to_new[cls] == -1) {
-        old_to_new[cls] = new_class++;
+void class_refine ( int * list, int nlist ) {
+  #define INSERT(Q,q)          *Q = q; Q = & next [q]
+
+  /*
+  ..  if (nclass == ALPH)       already refined to max. i.e |Σ| = |P|
+  ..    return;
+  */
+
+  int S [ALPH], * Y1, * Y2, c, n, ec;
+  memset (S, 0, sizeof (S));
+  for (int i=0; i<nlist; ++i)
+    S [list[i]] = 1;
+
+  for (int i=0; i<nlist; ++i) {
+
+    c = list [i];
+
+    if ( S[c] == 0 )                /* Alreay placed to a new class */
+      continue ;
+
+    ec = class [c];
+    Y1 = & head [ec] ;
+    Y2 = & head [nclass] ;
+
+    c = *Y1;
+    while ( c != END ) {
+      n = next [c];
+      if ( S [c] ) {
+        INSERT (Y1, c);                               /* Y1 = Y ∩ S */
       }
-      equiv_class[c] = old_to_new[cls];
+      else {
+        S [c] = 0;
+        INSERT (Y2, c);                               /* Y2 = Y ∖ S */
+      }
+      c = n;
+    }
+    *Y1 = *Y2 = END;                     /* Now Y is replaced by Y1 */
+
+    assert ( head [ec] != END );                /* Y1 can't be empty*/
+    if ( (c = head [nclass]) != END ) {              /* Y ∖ S  ≠ ∅  */
+      //c = head [ec]; 
+      do {
+        class [c] = nclass;
+        c = next [c];
+      } while ( c != END ) ;
+      nclass++;                        /* Add Y2 to P, if non-empty */
     }
   }
-  num_classes = new_class;
+
+  #undef INSERT
 }
-*/
 
-void refine_class(int *is_selected) {
-    int old_to_new[ALPHABET];
-    memset(old_to_new, -1, sizeof(old_to_new));
+#undef END
 
-    int new_class = num_classes;
-
-    for (int cls = 0; cls < num_classes; cls++) {
-        int count_in = 0, count_total = 0;
-        for (int c = 0; c < ALPHABET; c++) {
-            if (equiv_class[c] == cls) {
-                count_total++;
-                if (is_selected[c]) count_in++;
-            }
-        }
-        if (count_in == 0 || count_in == count_total)
-            continue;  // nothing to split
-
-        // Actually split: assign new class to selected chars
-        for (int c = 0; c < ALPHABET; c++)
-            if (equiv_class[c] == cls && is_selected[c])
-                equiv_class[c] = new_class;
-        new_class++;
-    }
-
-    num_classes = new_class;
-}
 

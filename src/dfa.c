@@ -339,7 +339,7 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
 
   /*
   .. Partition of the set Q is now stored in P.
-  .. (i)   P = {p_0, p_1, .. } with p_i ⊆ Q,
+  .. (i)   P = {p_0, p_1, .. } with p_i ⊆ Q, and p_i ≠ ∅
   .. (ii)  p_i ∩ p_j = ∅ iff i ≠ j
   .. (iii) collectively exhaustive, i.e,  union of p_i is Q
   */

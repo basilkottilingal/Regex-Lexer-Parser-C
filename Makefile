@@ -2,7 +2,7 @@ CC     = gcc
 CFLAGS = -Iinclude -Wall
 C99    = -std=c99 -pedantic
 
-RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c src/bits.c src/error.c
+RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c src/bits.c src/error.c src/class.c
 LXR    = src/lexer/lexer.c
 OBJ    = $(patsubst src/%.c, obj/%.o, $(RGX))
 LOBJ   = $(patsubst src/lexer/%.c, obj/%.o, $(LXR))
@@ -50,6 +50,7 @@ all: obj/rgx.a
 	$(MAKE) obj/dfa.tst
 	$(MAKE) obj/nfa.tst
 	$(MAKE) obj/bits.tst
+	$(MAKE) obj/class.tst
 	$(MAKE) obj/min-dfa.tst
 	$(MAKE) obj/hopcroft.tst
 	$(MAKE) obj/hopcroft.tst

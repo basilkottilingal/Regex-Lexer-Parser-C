@@ -11,17 +11,21 @@
 .. We initialize ( class_init() )  with
 .. P ← {Σ}
 .. for each character group S, we refine P ( class_refine() ) as :
-..    P ← { Y ∩ S, Y ∖ S ∣ X ∈ P } ∖ { ∅ }
+..    P ← { Y ∩ S, Y ∖ S ∣ Y ∈ P } ∖ { ∅ }
 ..
 .. In the above algorithm, S, is a character set
 .. like [a-z], [^0-9], etc.
 .. Neglect intersection set or difference set, if empty.
+..
+.. Creating equivalence class for negated character class [^..], works
+.. same way for non-negated class []. It is because the refining algo,
+.. class_refine (), has similar effect. If ¬S := Σ∖S, is the 
+.. complement of S, then : Y ∩ ¬S = Y ∖ S, and Y ∖ ¬S = Y ∩ S. 
 */
 
 #define ALPH 256
 
 #include <string.h>
-#include <stdio.h>
 
 #include "class.h"
 
@@ -32,9 +36,8 @@
 static int next [ALPH], head [ALPH];
 
 /*
-.. class is the mapping C(c) from [0,256) -> [0, nclass).
-.. nclass is the number of equivalence classes.
-.. nclass = max(C) + 1 = |P|
+.. class is the mapping C(c) from [0,256) -> [0, nclass) where nclass
+.. is the number of equivalence classes. i.e nclass = max(C) + 1 = |P|
 */
 static int class [ALPH], nclass = 0;
 
@@ -105,15 +108,12 @@ void class_refine ( int * list, int nlist ) {
 
 /*
 .. Refine to accomodate a new quivalence class that
-.. contains only one character.
+.. contains only one character.  S := {c}
 */
 void class_char ( int c ) {
-printf("C(%c)", (char) c );
-fflush (stdout);
   int ec = class [c], * Y1 = & head [ec];
   if ( *Y1 == c && next [c] == END )
     return;                                   /* c is already alone */
-printf("."); fflush (stdout);
 
   int y, * Y2 = & head [nclass];
   while ( (y = *Y1) != END ) {
@@ -126,7 +126,6 @@ printf("."); fflush (stdout);
     }
     Y1 = & next [y];
   }
-printf(".."); fflush (stdout);
 }
 
 #undef INSERT

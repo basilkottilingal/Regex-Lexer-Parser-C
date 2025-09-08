@@ -2,7 +2,9 @@
 
 #include "bits.h"
   
-#if !defined(__GNUC__) && !defined(__clang__)
+#if (!defined(__GNUC__) && !defined(__clang__)) || \
+    !__has_builtin(__builtin_clzll)
+
 int __builtin_clzll (unsigned long long k) {
   if ( k == 0ull ) return ULL_BITS;
   unsigned long long mask = 1ull << (ULL_BITS - 1); 
@@ -17,6 +19,7 @@ int __builtin_ctzll (unsigned long long k) {
 int __builtin_popcountll (unsigned long long k) {
   int n = 0; while (k) { ++n; k &= k-1; } return n;
 }
+
 #endif
 
 

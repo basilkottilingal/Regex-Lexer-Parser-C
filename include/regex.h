@@ -58,6 +58,7 @@
   .. (d) report an error and stack it to the list of error.
   */
   int  rgx_nfa       ( char   * rgx, State ** nfa, int itoken );
+  int  rpn_nfa       ( int * rpn, State ** nfa, int itoken );
   int  rgx_nfa_match ( State  * nfa, const char * txt );
   int  rgx_list_dfa  ( Stack * rgx_list, DState ** dfa );
   void error         ( const char * err, ... );

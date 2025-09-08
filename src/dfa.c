@@ -4,6 +4,7 @@
 #include <assert.h>
 
 #include "nfa.h"
+#include "class.h"
 #include "regex.h"
 #include "allocator.h"
 #include "stack.h"
@@ -263,10 +264,10 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   int count1 = 0, count2 = 0;
   for (int i=0; i<nq; ++i) {
     if (RGXMATCH (q[i])) {
-      BITINSERT (F, i);  count1++; /* F := { q in Q | q is accepting } */
+      BITINSERT (F, i); count1++; /* F := { q in Q |q is accepting }*/
     }
     else {
-      BITINSERT (Q_F, i); count2++;                             /* Q\F */
+      BITINSERT (Q_F, i); count2++;                          /* Q\F */
     }
   }
   if (!count1) return RGXERR;
@@ -361,16 +362,38 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   #undef STACK
   #undef COPY
 
+int equivalence_class ( Stack * rgxlist ) {
+  int csingle [256], cstack [256],      /* For single char eq class */
+    nc = 0, group [256], ig,          /* For charcter set [], [^..] */
+    nr = rgxlist->len / sizeof (void *),  /* number of rgx pattersn */
+    charclass = 0, escape = 0, temp = 0; 
+  char ** ptr = (char **) rgxlist->stack, *rgx;
+  memset (csingle, 0, sizeof (csingle));
+
+  while (nr--) {
+    rgx = ptr [nr];
+  }
+
+  for (int j=0; j<nc; ++j ) {
+    class_char ( cstack [j] );
+  }
+}
+
 int rgx_list_dfa ( Stack * list, DState ** dfa ) {
-  int nr = list->len / sizeof (void *);
-  char ** rgx = (char ** ) list->stack;
+  int nr = list->len / sizeof (void *), n, nt = 0;
   State * nfa = allocate ( sizeof (State) ),
     ** out = allocate ( (nr+1) * sizeof (State *) );
-  int n, nt = 0;
   state_reset ();
+  char ** rgx = (char **) list->stack;
   for (int i=0; i<nr; ++i) {
-    n = rgx_nfa (rgx[i], &out[i], i+1);/* itoken 0, reserved for err*/
-    if ( n < 0 ) return RGXERR;
+    /*
+    .. Note that the token number itoken = 0, is reserved for error
+    */
+    n = rgx_nfa (rgx[i], &out[i], i+1 ); 
+    if ( n < 0 ) {
+      error ("rgx list nfa : cannot create nfa for rgx \"%s\"", rgx);
+      return RGXERR;
+    }
     nt += n;
   }
   *nfa = (State) {
@@ -378,6 +401,7 @@ int rgx_list_dfa ( Stack * list, DState ** dfa ) {
     .ist = nt++,
     .out = out
   };
+  
   return hopcroft (nfa, dfa, nt);
 }
 

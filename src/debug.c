@@ -25,19 +25,26 @@ int rgx_rpn_print ( int * rpn ) {
         case ',' : case ';' : case '-' : case '|' :
           e2 = POP(stack); e1 = POP(stack);
           assert(e1>=0 && e2>=0);
-          if (e1>=512) printf (" \033[1;31m[%d]", e1-512);
-          else           printf (" \033[1;31m%c", e1);
-                         printf (" \033[1;32m%c", (char) op);
-          if (e2>=512) printf (" \033[1;31m[%d]", e2-512);
-          else           printf (" \033[1;31m%c", e2);
+          if (e1>=512)
+            printf (" \033[1;31m[%d]", e1-512);
+          else
+            printf (" \033[1;31m%c", e1);
+          printf (" \033[1;32m%c", (char) op);
+
+          if (e2>=512)
+            printf (" \033[1;31m[%d]", e2-512);
+          else
+            printf (" \033[1;31m%c", e2);
           assert (PUSH(inode) >= 0); inode++;
           break;
         case '*' : case '#' : case '+' : case '?' : case '~' :
           e1 = POP(stack);
           assert(e1>=0);
-          if (e1>=512) printf (" \033[1;31m[%d]", e1-512);
-          else           printf (" \033[1;31m%c", e1);
-                         printf (" \033[1;32m%c", (char) op);
+          if (e1>=512)
+            printf (" \033[1;31m[%d]", e1-512);
+          else
+            printf (" \033[1;31m%c", e1);
+          printf (" \033[1;32m%c", (char) op);
           assert (PUSH(inode) >= 0); inode++;
           break;
         default:
@@ -48,6 +55,8 @@ int rgx_rpn_print ( int * rpn ) {
     }
     fflush(stdout);
   }
+
+  return 0;
 
   #undef  PUSH
   #undef  POP

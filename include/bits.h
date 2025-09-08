@@ -5,8 +5,13 @@
 
   #define ULL_BITS    (sizeof(unsigned long long) * CHAR_BIT)
   #define SIZE_T_BITS (sizeof(size_t) * CHAR_BIT)
+
+  #ifndef __has_builtin
+    #define __has_builtin(x) 0
+  #endif
   
-  #if !defined(__GNUC__) && !defined(__clang__)
+  #if (!defined(__GNUC__) && !defined(__clang__)) || \
+    !__has_builtin(__builtin_clzll)
 
     int __builtin_clzll      (unsigned long long k);
     int __builtin_ctzll      (unsigned long long k);

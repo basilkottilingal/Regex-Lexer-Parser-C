@@ -1,11 +1,10 @@
 /*
 .. Given an NFA (Q, Σ, δ, q0 , F ) there exists
 .. atleast one partition P (Σ), which satisfy the condition ( cond-1 )
-..   ∀ p[i] ∈ P and c, c′ ∈ p[i]   ⇒   δ(q, c) = δ(q, c′)  ∀  q ∈ Q
+.. ∀ p[i] ∈ P and c, c′ ∈ p[i]   ⇒   δ(q, c) = δ(q, c′)  ∀  q ∈ Q
 .. Now, the equivalence class is the function
-..   C(c) : Σ → {0, 1, ..., |P| − 1} which maps c to p[i]
-.. i.e.
-..   C(c) = i ⇐⇒ c ∈ p[i]
+.. C(c) : Σ → {0, 1, ..., |P| − 1} which maps c to p[i]
+.. i.e.   C(c) = i ⇐⇒ c ∈ p[i]
 .. Our aim is to look for the coarsest partition, or the one
 .. that satisfy above condition (cond-1) and minimises |P(Σ)|.
 ..
@@ -20,10 +19,9 @@
 */
 
 #define ALPH 256
-#define END  -1
 
 #include <string.h>
-#include <assert.h>
+#include <stdio.h>
 
 #include "class.h"
 
@@ -44,6 +42,7 @@ void class_get ( int ** c, int * n ) {
   *c = class; *n = nclass;
 }
 
+#define END  -1
 void class_init () {
 
   /*
@@ -60,14 +59,11 @@ void class_init () {
 
 }
 
-
+/*
+.. Refine to accomodate a new equivalence class
+*/
 void class_refine ( int * list, int nlist ) {
   #define INSERT(Q,q)          *Q = q; Q = & next [q]
-
-  /*
-  ..  if (nclass == ALPH)       already refined to max. i.e |Σ| = |P|
-  ..    return;
-  */
 
   int S [ALPH], * Y1, * Y2, c, n, ec;
   memset (S, 0, sizeof (S));
@@ -92,27 +88,48 @@ void class_refine ( int * list, int nlist ) {
         INSERT (Y1, c);                               /* Y1 = Y ∩ S */
       }
       else {
-        S [c] = 0;
         INSERT (Y2, c);                               /* Y2 = Y ∖ S */
+        S [c] = 0;
+        class [c] = nclass;
       }
       c = n;
     }
     *Y1 = *Y2 = END;                     /* Now Y is replaced by Y1 */
 
-    assert ( head [ec] != END );                /* Y1 can't be empty*/
     if ( (c = head [nclass]) != END ) {              /* Y ∖ S  ≠ ∅  */
-      //c = head [ec]; 
-      do {
-        class [c] = nclass;
-        c = next [c];
-      } while ( c != END ) ;
       nclass++;                        /* Add Y2 to P, if non-empty */
     }
   }
 
-  #undef INSERT
 }
 
+/*
+.. Refine to accomodate a new quivalence class that
+.. contains only one character.
+*/
+void class_char ( int c ) {
+printf("C(%c)", (char) c );
+fflush (stdout);
+  int ec = class [c], * Y1 = & head [ec];
+  if ( *Y1 == c && next [c] == END )
+    return;                                   /* c is already alone */
+printf("."); fflush (stdout);
+
+  int y, * Y2 = & head [nclass];
+  while ( (y = *Y1) != END ) {
+    if (y == c) {
+      INSERT (Y2, c);
+      *Y1 = next [c];
+      *Y2 = END;
+      class [c] = nclass++;
+      return;
+    }
+    Y1 = & next [y];
+  }
+printf(".."); fflush (stdout);
+}
+
+#undef INSERT
 #undef END
 
 

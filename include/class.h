@@ -4,5 +4,6 @@
   void class_init   ( );
   void class_get    ( int ** class, int * nclass );
   void class_refine ( int * list, int n );
+  void class_char   ( int c );
 
 #endif

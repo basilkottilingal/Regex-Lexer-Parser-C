@@ -180,7 +180,7 @@ typedef struct iStack {
 /*
 .. Reverse polish notation
 */
-int rgx_rpn ( char * s, int ** rpn ) {
+int rgx_rpn ( char * s, int * rpn ) {
 
   #define  PUSH(_s_,_c_)        ( _s_.n == _s_.max ? \
     (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_))
@@ -194,9 +194,8 @@ int rgx_rpn ( char * s, int ** rpn ) {
 
   char ** rgx = &s;
   int queued[4];
-  int RGXRPN[RGXSIZE];
   int RGXOPS[RGXSIZE];
-  iStack stack  = STACK (RGXRPN, RGXSIZE),
+  iStack stack  = STACK (rpn, RGXSIZE),
         ostack = STACK (RGXOPS, RGXSIZE),
         queue  = STACK (queued, 4);
   int op, last = RGXBGN, *range = &token[1];
@@ -206,14 +205,10 @@ int rgx_rpn ( char * s, int ** rpn ) {
         RTN (stack, POP(ostack));
       if (TOP (ostack)) return RGXERR;
       stack.a[stack.n] = RGXEOE;
-      *rpn = allocate ( (stack.n+1) * sizeof (int) );
-      memcpy ( *rpn, RGXRPN,  (stack.n+1) * sizeof (int) );
       return *rgx - s;
     }
     if ( op <= 0 ) {
       stack.a[stack.n] = RGXERR;
-      *rpn = allocate ( (stack.n+1) * sizeof (int) );
-      memcpy ( *rpn, RGXRPN,  (stack.n+1) * sizeof (int) );
       printf("\nRgx Error : Wrong Expression "); return op;
     }
     if ( ISRGXOP (op) ) {

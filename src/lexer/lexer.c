@@ -153,7 +153,7 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
   stack_reset (actions);
 
   int line = 1, status;
-  char rgx [256], action [4096];
+  char rgx [RGXSIZE], action [4096];
 
   for (;;) {
     /* Read rgx pattern */

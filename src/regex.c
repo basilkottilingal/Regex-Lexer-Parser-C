@@ -8,28 +8,28 @@
 #include "allocator.h"
 
 /*
-..Precedence table
-..
-.. Operations      --|--    Example    --|--  Precedence
-.. Grouping          |    (), [], [^]    |    - ( Immediately push to stack )
-.. Unary operators   |    x*, x?, x+     |    - ( Immediately push to stack )
-.. Concatenation     |        x;y        |    1 ( Highest )  **
-.. Union             |        x|y        |    2 ( Lowest )
-..
-..    NOTE : Operator ';' as append (implicit)
-..
-.. Expect a maximum depth ( for operator stack) of 2 per each groupings
-.. like (...), [...], [^...] and global grouping. Only the (..) can be compunded.
+.. Precedence table in decreasing order of precedence
+.. ----------------|--------------
+.. Operations      |    Example
+.. ----------------|--------------
+.. Grouping        |  (), [], [^]
+.. Unary operators |  x*, x?, x+
+.. Concatenation   |      x;y
+.. Union           |      x|y
+.. ----------------|--------------
+.. Note (a) the Operator ';' is used as the hidden and implicit append
+.. operator. (b) Expect a maximum depth ( for operator stack) of 2 per
+.. each groupings like (), [], [^] and global grouping. Only the ()
+.. can be compounded.
 */
 
-#define  RGXCHR(_c_)     ((int) ((_c_) < 32 ? '\0' : (_c_)))
+#define  RGXCHR(_c) ( (int) ((_c) < 32 || (_c) > 126) ? EOF : (_c) )
 static int rgx_input ( char ** str ) {
   /*
-  .. Doesn't expect value outside [32,128) except for '\0'.
-  .. Unicode characters not allowed in regex expression.
-  .. If you want the regex to represent tokens with
-  .. unicode characters, use "\uXXXX".
-  .. Non printable characters ASCII [0,32)
+  .. Doesn't expect value outside [32,126) except for '\0'. Unicode
+  .. characters are not allowed in the regex expr. If you want the
+  .. regex to represent tokens with unicode characters, use  "\uXXXX".
+  .. Non printable ascii characters, i.e c ∈ [0,32) ∪ [126, 256),
   .. are taken as end of regex expression
   */
   char c = *(*str)++;
@@ -37,23 +37,40 @@ static int rgx_input ( char ** str ) {
 }
 
 static int token[3] = {0};
-static int single_char = 0;
+static int charclass = 0;
 
+/*
+.. We break down the regex to tokens of 
+.. (a) literals in [0, 256) (normal ascii literals, escaped, 
+.. unicode literals starting with \u, hex starting with \x).
+.. (b) operators in regex : .^{}()[]<>,?+*$;,-
+.. Some of those operators are defined additionally to identify some
+.. operations. Ex: ';' is used for appending. ',' is also used for
+.. appending, but inside character class []. '<''>' is used for 
+.. negated character class [^]. 
+.. (c) character groups like \D, \d, \w, \W, \s,\S.
+.. Both operators and character groups are encoded by adding 256, so
+.. that all number [0,256) are identified as literals and others have
+.. special meaning.
+.. (d) EOF : as end of expression for '\0' and other non-printable
+.. ascii values outside [32,126)
+*/
 int rgx_token ( char ** str ) {
 
-  #define  TOKEN()        token[0]
-  #define  RTN(_c_)       return ( token[0] = (_c_) )
-  #define  INPUT()        c = rgx_input(str)
-  #define  RGXNXT(_s_)    RGXCHR(*(*_s_))
-  #define  HEX(_c_)      ((_c_ >= '0' && _c_ <= '9') ? (_c_ - '0') :\
-                     (_c_ >= 'a' && _c_ <= 'f') ? (10 + _c_ - 'a') :\
+  #define  TOKEN()      token[0]
+  #define  RTN(_c_)     return ( token[0] = (_c_) )
+  #define  ERR(cond)    if (cond) return  ( token[0] = RGXERR )
+  #define  INPUT()      c = rgx_input(str)
+  #define  RGXNXT(_s_)  RGXCHR(*(*_s_))
+  #define  HEX(_c_)     ((_c_ >= '0' && _c_ <= '9') ? (_c_ - '0') : \
+                  (_c_ >= 'a' && _c_ <= 'f') ? (10 + _c_ - 'a') :   \
                   (_c_ >= 'A' && _c_ <= 'F') ? (10 + _c_ - 'A') : 16)
   int c;
-  switch ( (INPUT()) ) {
-    case '\0' : RTN (RGXEOE);
+  switch ( (INPUT ()) ) {
+    case EOF : RTN (RGXEOE);
     case '\\' :
-      switch ( (INPUT()) ) {
-        case '\0': RTN (RGXERR);
+      switch ( (INPUT ()) ) {
+        case EOF : RTN (RGXERR);
         case '0' : RTN ('\0');
         case 'a' : RTN ('\a');
         case 'f' : RTN ('\f');
@@ -69,23 +86,28 @@ int rgx_token ( char ** str ) {
         case 'x' : /* \xHH representing [0x00,0xFF] */
           int hh = 0, d;
           for (int i=0; i<2; ++i) {
-            INPUT();
-            if ( (d = HEX(c)) == 16) RTN (RGXERR);
+            INPUT ();
+            ERR ((d = HEX(c)) == 16);
             hh = (hh << 4) | d;
           }
           RTN (hh);
         case 'p' : case 'P' : case 'b' :
-          RTN (RGXERR);  /* Not yet implemented */
+          /*
+          .. Not yet implemented
+          */
+          RTN (RGXERR);  
         case 'u' :
-          /* \uHHHH represnting [0x0000-0xFFFF] split over
-          .. two bytes [0x00-0xFF] [0x00-0xFF] */
-          if (single_char) RTN(RGXERR);
+          /*
+          .. \uHHHH represnting [0x0000-0xFFFF] split over
+          .. two bytes [0x00-0xFF] [0x00-0xFF]
+          */
+          ERR (charclass);
           int * r = &token[1];
           for (int j=0; j<2; ++j) {
             int hh = 0;
             for (int i=0; i<2; ++i) {
-              INPUT();
-              if ( (d = HEX(c)) == 16) RTN (RGXERR);
+              INPUT ();
+              ERR ((d = HEX(c)) == 16);
               hh = (hh << 4) | d;
             }
             r[j] = hh;
@@ -95,70 +117,75 @@ int rgx_token ( char ** str ) {
           RTN (c);
       }
     case '[' :
-      if (single_char)
+      if (charclass)
         RTN ('[');
       if ( RGXNXT (str) == '^' ) {
         INPUT();
-        single_char = 2;
+        charclass = 2;
+        /*
+        .. Replace [^..] with <..>
+        */
         RTN ( RGXOP('<') );
-        /* Negation. i.e, single character except those listed in [^..] */
       }
-      single_char = 1;
+      charclass = 1;
       RTN ( RGXOP ('[') );
     case ']' :
-      if (!single_char)
-        RTN (RGXERR);
-      int s = single_char;
-      single_char  = 0;
+      ERR (!charclass);
+      int s = charclass;
+      charclass  = 0;
       RTN ( s == 2 ? RGXOP ('>' ) : RGXOP(']'));
     case '(' :
-      if ( TOKEN() == RGXOP(')') && RGXNXT(str) == '?' )
-        RTN (RGXERR);  /* patterns ()(?...) are not yet implemented */
+      /*
+      .. patterns ()(?...) are not yet implemented
+      */
+      ERR ( TOKEN() == RGXOP(')') && RGXNXT(str) == '?' );
     case ')' : case '|' : case '$' :
     case '.' : case '+' : case '*' :
-      RTN ( single_char ? c : RGXOP(c) );
+      RTN ( charclass ? c : RGXOP(c) );
     case '^' :
       /*
-      .. !! Cannot handle (\W|^)[\w.\-]{0,25}@(yahoo|hotmail|gmail)\.com(\W|$)
-      .. '^' at the beginning (start anchor) is defined as operator ^.
-      .. (negated single character )[^..] is replaced by  <..>.
-      .. Otherwise '^' is taken as literal.
+      .. fixme : cannot handle if '^' represents start of file, but
+      .. '^' is not at the beginning of rgx pattern as in the example
+      ..  (\W|^)[\w.\-]{0,25}@(yahoo|hotmail|gmail)\.com(\W|$)
       */
       RTN ( TOKEN() <= 0 ? RGXOP ('^') : '^' );
     case '?' :
-      RTN ( single_char ? c : RGXOP(c) );
+      RTN ( charclass ? c : RGXOP(c) );
     case '-' :
       RTN (
-        ( !single_char || ( TOKEN() == RGXOP('[') ) || ( RGXNXT(str) == ']' ) ) ?
-        '-' : RGXOP ('-')
+        ( !charclass || ( TOKEN() == RGXOP('[') ) ||
+          ( RGXNXT(str) == ']' ) ) ? '-' : RGXOP ('-')
       );
     case ' ' :
-      RTN ( single_char ? ' ' : RGXEOE );
+      RTN ( charclass ? ' ' : RGXEOE );
     case '{' :
       int *r = &token[1], nread = 0; r[0] = 0, r[1] = INT_MAX;
-      for (int i=0, ndigits = 0, val = 0; i<2; ++i, ndigits = 0, val = 0) {
-        while ( (INPUT()) != '\0' ) {
+      for (int i=0; i<2; ++i) {
+        int ndigits = 0, val = 0;
+        while ( (INPUT()) != EOF ) {
           if ( c == '}' ) {
             if (ndigits) { ++nread; r[i] = r[1] = val; }
             i=2; break;
           }
           if ( c == ',' ) {
-            if (i) RTN (RGXERR);
+            ERR (i);
             if (ndigits) { ++nread; r[i] = val; }
             break;
           }
-          if ( c<'0' || c>'9' ) RTN (RGXERR);
+          ERR ( c<'0' || c>'9' );
           ++ndigits, val = val*10 + (c-'0');
         }
       }
       /* Errors: {n,m,}, {}, {,}, {n,m} with m<n.
       .. {0}, {0,0}, {,0} will be simply omitted */
-      RTN ( (!nread || r[1] < r[0]) ? RGXERR : !r[1] ? rgx_token (str) : RGXOP('#') );
+      ERR ( !nread || r[1] < r[0] );
+      RTN ( !r[1] ? rgx_token (str) : RGXOP('#') );
     default :
       RTN (c);
   }
   RTN (RGXERR);
 
+  #undef  ERR
   #undef  RTN
   #undef  INPUT
   #undef  RGXNXT
@@ -207,9 +234,9 @@ int rgx_rpn ( char * s, int * rpn ) {
       stack.a[stack.n] = RGXEOE;
       return *rgx - s;
     }
-    if ( op <= 0 ) {
+    if ( op < 0 ) {
       stack.a[stack.n] = RGXERR;
-      printf("\nRgx Error : Wrong Expression "); return op;
+      error ( "rgx error : wrong expression "); return op;
     }
     if ( ISRGXOP (op) ) {
       switch ( op & 255 ) {
@@ -224,7 +251,7 @@ int rgx_rpn ( char * s, int * rpn ) {
           /* Not yet implemented */
           if ( last & (RGXOPD | RGXOPN) ) {
             RTN (queue, op);
-            RTN (queue, RGXOP(single_char ? ',' : ';'));
+            RTN (queue, RGXOP(charclass ? ',' : ';'));
             break;
           }
           OPERAND (op);
@@ -273,8 +300,8 @@ int rgx_rpn ( char * s, int * rpn ) {
         case ']' :
         case ')' :
           /* For reduction of [] or [^] */
-          if (single_char)
-            RTN (queue, single_char == 2 ? RGXOP ('~') :  RGXOP ('!') );
+          if (charclass)
+            RTN (queue, charclass == 2 ? RGXOP ('~') :  RGXOP ('!') );
           /* '>'='<'+2, ']'='['+2,  ')'='('+1 */
           int c = op - 2 + (op == RGXOP(')'));
           for (int i=0; i<2 && ( TOP (ostack) != c ); ++i)
@@ -298,13 +325,13 @@ int rgx_rpn ( char * s, int * rpn ) {
     else {
       if ( last & (RGXOPD | RGXOPN) ) {
         RTN (queue, op);
-        RTN (queue, RGXOP(single_char ? ',' : ';'));
+        RTN (queue, RGXOP(charclass ? ',' : ';'));
         continue;
       }
       OPERAND (op);
     }
   }
-  
+
   return RGXERR;
 
   #undef  POP

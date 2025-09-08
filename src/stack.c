@@ -110,8 +110,7 @@ void stack_bit ( Stack * s, int i ) {
 */
 void stack_push ( Stack * s, void * m ) {
   while (s->len + sizeof (void *) > s->max) {
-    stack_realloc (s, s->max + 8 * sizeof (void *));
-                                      /* Add 8 slots */
+    stack_realloc (s, 2 * s->max); /* double the size */
   }
   memcpy ( s->stack + s->len, &m, sizeof (void *) );
   s->nentries++;

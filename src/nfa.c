@@ -6,6 +6,7 @@
 #include "stack.h"
 #include "nfa.h"
 #include "allocator.h"
+#include "class.h"
 
 /*
 .. Functions and objects required for creating a
@@ -29,8 +30,12 @@ typedef struct Fragment {
 } Fragment;
 
 static int state_number = 0;
-
 void state_reset () {
+  /* 
+  .. Set this, if you plan to make DFA later. Bitsets
+  .. of indices of nfa can be made only if their 
+  .. index fall in  [0, nnfa)
+  */
   state_number = 0;
 }
 
@@ -82,23 +87,14 @@ static void concatenate ( Dangling * d, State * s ) {
   }
 }
 
-static int rgxlen;
-
-int rgx_len ( ) {
-  return rgxlen;
-}
-
-int rgx_nfa ( char * rgx, State ** start, int itoken ) {
+int rpn_nfa ( int * rpn, State ** start, int itoken ) {
 
   #define  STT(_f_,_a,_b) s = state (_f_,_a,_b); if(s == NULL) return RGXOOM
   #define  POP(_e_)       if (n) _e_ = stack[--n]; else return RGXERR;
   #define  PUSH(_s_,_d_)  if (n < RGXSIZE) stack[n++] = (Fragment){ _s_, _d_} ; \
                           else return RGXOOM
 
-  //state_number = 0;
   int nstates = state_number;
-  int * rpn = NULL;
-  if ( (rgxlen = rgx_rpn (rgx, &rpn)) < RGXEOE ) return RGXERR;
   int n = 0, op;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;
@@ -150,7 +146,10 @@ int rgx_nfa ( char * rgx, State ** start, int itoken ) {
     }
   }
   POP(e);
-  if (n) return RGXERR;
+  if (n) {
+    error ("rpn nfa : wrong rpn");
+    return RGXERR;
+  }
   concatenate ( e.out, fstate (itoken) );
   *start = e.state;
   return state_number - nstates;
@@ -158,6 +157,15 @@ int rgx_nfa ( char * rgx, State ** start, int itoken ) {
   #undef  PUSH
   #undef  POP
   #undef  STT
+}
+
+int rgx_nfa ( char * rgx, State ** start, int itoken ) {
+  int rpn [RGXSIZE];
+  if ( rgx_rpn (rgx, rpn) < RGXEOE ) {
+    error ("rgx nfa : cannot make rpn for rgx \"%s\"", rgx);
+    return RGXERR;
+  }
+  return rpn_nfa ( rpn, start, itoken );
 }
 
 /*

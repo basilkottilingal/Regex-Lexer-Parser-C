@@ -16,22 +16,29 @@ int main () {
   for (int i = 'a'; i<= 'z'; ++i)
     list[nl++] = i;
 
-  class_refine (list, nl);  /* a-z */
-  class_refine (list, 6);  /* a-f */
-  for (int i=0; i<100; i++)
-    class_refine (list, 6);  /* a-f */ // should have no effect
+  class_refine (list, nl);                                   /* a-z */
+  class_refine (list, 6);                                    /* a-f */
 
+  class_refine (list, 6);        /* a-f */    // should have no effect
+
+  list[0] = '\0';
+  class_char ( '\0' );                 /* '\0' is in it's own class */
+  class_char ( '\0' );          /* '\0' */    // should have no effect
+
+  /* Expect C(c) in {0,1,2,3} */
 
   int * class = NULL, nclass = 0;
   class_get ( &class, &nclass );
 
   char buff[16]; buff[1] = '\0';
+  printf ("\n [  ");
   for (int i=0; i<256; ++i) {
     buff [0] = (char) i;
     printf ("%s %d  ", i>32 && i<126 ? buff : " ", class[i]);
     if ( (i & (int) 15) == 0)
-      printf ("\n");
+      printf ("\n    ");
   }
+  printf ("\n ]");
 
   return 0;
 }

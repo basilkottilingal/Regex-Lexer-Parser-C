@@ -71,19 +71,18 @@
 
   /*
   .. RGXSIZE is the default size of stack for rgx literals/NFA states/ etc
-  .. If an implementation fail with RGXOOM flag, rerun with larger RGXSIZE
+  .. If an implementation fail with RGXOOM flag, recompile with 
+  .. larger RGXSIZE
   */
   #ifndef RGXSIZE
-    #define RGXSIZE 64
+    #define RGXSIZE 256
   #endif
-
-  /* #define RGXNFA_CACHE_LIMIT 512 */
 
   #define   RGXOP(_c_)     ((_c_) | 256)
   #define ISRGXOP(_c_)     ((_c_) & 256)
 
   /* Lower level/Internal funtions. Maybe used for debug */
-  int rgx_rpn       ( char * rgx, int ** rpn );
+  int rgx_rpn       ( char * rgx, int * rpn );
   int rgx_rpn_print ( int * rpn );
 
 #endif

@@ -26,7 +26,6 @@ typedef struct DState {
 
 static int       nstates = 0;              /* Number of Dfa states. */
 
-
 static DState ** htable  = NULL;                /* Uses a hashtable */
 static int       hsize;                /* fixme : use prime numbers */
 static int       stacksize;    /* bit stack size rounded to 8 bytes */
@@ -383,11 +382,12 @@ int rgx_list_dfa ( Stack * list, DState ** dfa ) {
 }
 
 int rgx_dfa ( char * rgx, DState ** dfa ) {
-  State * nfa = NULL;
-  state_reset ();
-  int n = rgx_nfa (rgx, &nfa, 0);
-  if ( n < 0 ) return RGXERR;
-  return hopcroft (nfa, dfa, n);
+  char mem [ sizeof (void *) ];
+  Stack list = (Stack) { 
+    .stack = mem, .len = 0, .nentries = 0, .max = sizeof (mem) 
+  };
+  stack_push (&list, rgx);
+  return rgx_list_dfa (&list, dfa);
 }
 
 int rgx_dfa_match ( DState * dfa, const char * txt ) {

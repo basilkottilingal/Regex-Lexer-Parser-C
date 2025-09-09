@@ -362,28 +362,11 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   #undef STACK
   #undef COPY
 
-int equivalence_class ( Stack * rgxlist ) {
-  int csingle [256], cstack [256],      /* For single char eq class */
-    nc = 0, group [256], ig,          /* For charcter set [], [^..] */
-    nr = rgxlist->len / sizeof (void *),  /* number of rgx pattersn */
-    charclass = 0, escape = 0, temp = 0; 
-  char ** ptr = (char **) rgxlist->stack, *rgx;
-  memset (csingle, 0, sizeof (csingle));
-
-  while (nr--) {
-    rgx = ptr [nr];
-  }
-
-  for (int j=0; j<nc; ++j ) {
-    class_char ( cstack [j] );
-  }
-}
-
 int rgx_list_dfa ( Stack * list, DState ** dfa ) {
   int nr = list->len / sizeof (void *), n, nt = 0;
   State * nfa = allocate ( sizeof (State) ),
     ** out = allocate ( (nr+1) * sizeof (State *) );
-  state_reset ();
+  nfa_reset (list);
   char ** rgx = (char **) list->stack;
   for (int i=0; i<nr; ++i) {
     /*

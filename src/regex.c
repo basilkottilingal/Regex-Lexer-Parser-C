@@ -190,19 +190,26 @@ typedef struct iStack {
 } iStack;
 
 /*
-.. Reverse polish notation
+.. Reverse polish notation.
+.. For valid part of "rpn", it will have value >= 0, representing 
+.. literals, operators, boundary assertions, character groups etc, It
+.. will be followed by a non-negative integer EOF (success), RGXERR
+.. (error) or RGXOOM (out of memory).
+.. Return value : EOF/RGXERR/RGXOOM
 */
+
 int rgx_rpn ( char * s, int * rpn ) {
 
   #define  TOP(_s_)           ( _s_.n ? _s_.a[_s_.n - 1] : 0 )
   #define  POP(_s_)           ( _s_.n ? _s_.a[--_s_.n] : RGXOOM )
   #define  STACK(_a_,_m_)     (iStack) {.a = _a_, .n = 0, .max = _m_}
   #define  PUSH(_s_,_c_)      if (( _s_.n == _s_.max ?               \
-    (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_)) < EOF )   \
+    (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_)) < EOF )      \
                                  return TOP(_s_)
   #define  OPERATOR(_c_)      PUSH (ostack, _c_); last = RGXOPR;
   #define  OPERAND(_c_)       PUSH (stack,  _c_); last = RGXOPD;
   #define  OPERATION(_c_)     PUSH (stack,  _c_); last = RGXOPN;
+  #define  ERR(cond)          if (cond) PUSH (stack, RGXERR)
 
   char ** rgx = &s;
   int queued[4], RGXOPS[RGXSIZE], op, last = RGXBGN;
@@ -230,13 +237,11 @@ int rgx_rpn ( char * s, int * rpn ) {
         .. Unary operators which are already postfix in regex.
         */
         case '*' : case '?' : case '+' :
-          if ( !(last & (RGXOPD | RGXOPN)) ) {
-            return RGXERR;
-          }
+          ERR ( !(last & (RGXOPD | RGXOPN)) );
           OPERATION (op);
           break;
         case '{' :
-          if ( !(last & (RGXOPD | RGXOPN)) ) return RGXERR;
+          ERR ( !(last & (RGXOPD | RGXOPN)) );
           int n = token [1], m = token [2];
           OPERATION (op); OPERATION (n);
           OPERATION (m);  OPERATION (RGXOP ('}'));
@@ -272,8 +277,7 @@ int rgx_rpn ( char * s, int * rpn ) {
           int c = op - 2 + (op == RGXOP(')'));
           for (int i=0; i<2 && ( TOP (ostack) != c ); ++i)
             PUSH (stack, POP (ostack));
-          if ( POP (ostack) != c )
-            return RGXERR;                  /* depth should be <= 2 */
+          ERR ( POP (ostack) != c );        /* depth should be <= 2 */
           if ( op != RGXOP (')') )
             OPERATION (op);                  /* finalize char class */
           last = RGXOPN;
@@ -297,8 +301,7 @@ int rgx_rpn ( char * s, int * rpn ) {
           break;
 
         case '-' :
-          if (last != RGXOPD)
-            return RGXERR;
+          ERR (last != RGXOPD);
           if (TOP(ostack) == op)
             PUSH (stack, POP(ostack));
           OPERATOR (op);
@@ -306,7 +309,7 @@ int rgx_rpn ( char * s, int * rpn ) {
 
         default :
           error ("rgx rpn : unknown operator %c", (char) c);
-          return RGXERR;
+          ERR (1);
       }
     }
     else {
@@ -324,13 +327,12 @@ int rgx_rpn ( char * s, int * rpn ) {
       PUSH (stack, POP(ostack));
     if (ostack.n) {
       error ("rgx rpn : missing operand");
-      return RGXERR;
+      ERR (1);
     }
-    stack.a[stack.n] = RGXEOE;
+    PUSH (stack, RGXEOE);
     return *rgx - s;  /* returns length of characters in regex */
   }
 
-  stack.a[stack.n] = RGXERR;
   error ("rgx rpn : wrong expression ");
   return op;
 
@@ -338,6 +340,7 @@ int rgx_rpn ( char * s, int * rpn ) {
   #undef  TOP
   #undef  STACK
   #undef  PUSH
+  #undef  ERR
   #undef  OPERATOR
   #undef  OPERAND
   #undef  OPERATION

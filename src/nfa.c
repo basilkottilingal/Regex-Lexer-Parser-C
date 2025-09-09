@@ -29,20 +29,47 @@ typedef struct Fragment {
   Dangling * out;
 } Fragment;
 
-static int state_number = 0;
-void state_reset () {
-  /*
-  .. Set this, if you plan to make DFA later. Bitsets
-  .. of indices of nfa can be made only if their
-  .. index fall in  [0, nnfa)
+static int nfa_counter = 0;
+static int * class = NULL;
+static int nclass = 0;
+
+/*
+.. (a) reset nfa_counter to 0
+.. (b) given a list of rgx, it pre evaluate equivalence classes
+*/
+void nfa_reset ( Stack * rgxlist ) {
+  nfa_counter = 0;
+  int csingle [256], cstack [256],      /* For single char eq class */
+    nc = 0, group [256], ig,          /* For charcter set [], [^..] */
+    nr = rgxlist->len / sizeof (void *),  /* number of rgx pattersn */
+    rpn [RGXSIZE], charclass = 0, queue [4], nq;
+  char ** rgx = (char **) rgxlist->stack;
+  memset (csingle, 0, sizeof (csingle));
+/*
+  class_init ();
+  for (int i=0; i<nr; ++i) {
+    rgx_rpn (rgx[i], rpn) ) {
+      error (
+      return RGXERR;
+    }
+  }
+
+  / 
+
+  while (nr--) {
+    rgx = ptr [nr];
+  }
+
+  for (int j=0; j<nc; ++j ) {
+    class_char ( cstack [j] );
+  }
   */
-  state_number = 0;
 }
 
 static State * state ( int id, State * a, State * b ) {
   State * s = allocate ( sizeof (State) );
   s->id  = id;
-  s->ist = state_number++;
+  s->ist = nfa_counter++;
   int nout = (a == NULL) ? 1 : 3;
   s->out = allocate ( nout * sizeof (State *) );
   s->out[0] = a;
@@ -60,7 +87,7 @@ static State * fstate ( int itoken ) {
   f->itoken = itoken;
   State * s = &(f->s);
   s->id  = NFAACC;
-  s->ist = state_number++;
+  s->ist = nfa_counter++;
   return s;
 }
 
@@ -102,7 +129,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   #define  CLASS(_c_)                                                \
      ( nchar < 256 ? (charstack[nchar++] =  _c_) : RGXOOM )
 
-  int nstates = state_number;
+  int nnfa = nfa_counter;
   int n = 0, op, charclass = 0, charstack [256], nchar, queue [4], nq;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;
@@ -169,7 +196,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           break;
         default:
           /* Unknown */
-          error ("rgx nfa : unimplemented rule ");
+          error ("rgx nfa : unimplemented rule");
           return RGXERR;
       }
     }
@@ -189,7 +216,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   }
   concatenate ( e.out, fstate (itoken) );
   *start = e.state;
-  return state_number - nstates;
+  return nfa_counter - nnfa;
 
   #undef  PUSH
   #undef  POP
@@ -293,8 +320,15 @@ int states_bstack ( Stack * list, Stack * bits ) {
 
 int rgx_match ( char * rgx, const char * txt ) {
   State * nfa = NULL;
-  state_reset ();
-  if ( rgx_nfa (rgx, &nfa, 0) < 0 || !nfa ) return RGXERR;
+  char mem [ sizeof (void *) ];
+  Stack list = (Stack) { 
+    .stack = mem, .len = 0, .nentries = 0, .max = sizeof (mem) 
+  };
+  nfa_reset (&list);
+  if ( rgx_nfa (rgx, &nfa, 0) < 0 ) {
+    error ("rgx match : regex error");
+    return RGXERR;
+  }
   /* fixme :  recollect the used memory */
   return rgx_nfa_match (nfa, txt);
 }

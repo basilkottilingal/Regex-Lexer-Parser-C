@@ -195,7 +195,7 @@ typedef struct iStack {
 int rgx_rpn ( char * s, int * rpn ) {
 
   #define  TOP(_s_)           ( _s_.n ? _s_.a[_s_.n - 1] : 0 )
-  #define  POP(_s_)           ( _s_.n ? _s_.a[--_s_.n] : 0 )
+  #define  POP(_s_)           ( _s_.n ? _s_.a[--_s_.n] : RGXOOM )
   #define  STACK(_a_,_m_)     (iStack) {.a = _a_, .n = 0, .max = _m_}
   #define  PUSH(_s_,_c_)      if (( _s_.n == _s_.max ?               \
     (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_)) < EOF )   \
@@ -209,7 +209,8 @@ int rgx_rpn ( char * s, int * rpn ) {
   iStack ostack = STACK (RGXOPS, RGXSIZE),
     stack = STACK (rpn, RGXSIZE),
     queue = STACK (queued, 4);
-  while ( ( op = queue.n ? queue.a[--queue.n] : rgx_token (rgx) ) ) {
+  while ( 1 ) {
+    op = queue.n ? queue.a[--queue.n] : rgx_token (rgx) ;
     if ( op == RGXEOE ) {
       for (int i=0; i<2 && TOP (ostack); ++i)
         PUSH (stack, POP(ostack));
@@ -224,6 +225,9 @@ int rgx_rpn ( char * s, int * rpn ) {
     }
     if ( ISRGXOP (op) ) {
       switch ( op & 255 ) {
+        /*
+        .. Character groups . Not yet implemented
+        */
         case 'd' : case 's' : case 'w' :
         case 'D' : case 'S' : case 'W' :
         case '.' :
@@ -235,7 +239,9 @@ int rgx_rpn ( char * s, int * rpn ) {
           OPERAND (op);
           break;
 
-        /* Unary operators which are already postfix in regex. */
+        /* 
+        .. Unary operators which are already postfix in regex.
+        */
         case '*' : case '?' : case '+' :
         case '~' : case '!' :
           if ( !(last & (RGXOPD | RGXOPN)) ) return RGXERR;
@@ -248,7 +254,9 @@ int rgx_rpn ( char * s, int * rpn ) {
           OPERATION (m);  OPERATION (RGXOP ('}'));
           break;
 
-        /* Non-consuming, boundary assertion patters */
+        /*
+        .. Non-consuming, boundary assertion patters
+        */
         case '^' : case '$' :
           break;
 
@@ -265,11 +273,9 @@ int rgx_rpn ( char * s, int * rpn ) {
           }
           OPERATOR ( op );
           break;
-        case '>' :
+        case '>' : PUSH (queue, RGXOP ('~'));
         case ']' :
         case ')' :
-          if (charclass == 2)
-            PUSH (queue, RGXOP ('~'));   /* Negated character class */
           /*
           .. '>' = '<' + 2,
           .. ']' = '[' + 2,
@@ -301,14 +307,12 @@ int rgx_rpn ( char * s, int * rpn ) {
           break;
 
         case '-' :
-          /* Expects a literal before '-' operator */
           if (last != RGXOPD) return RGXERR;
           if (TOP(ostack) == op) PUSH (stack, POP(ostack));
           OPERATOR (op);
           break;
 
         default :
-          /* Unknown Operator */
           return RGXERR;
       }
     }

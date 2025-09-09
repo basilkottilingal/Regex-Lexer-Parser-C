@@ -95,7 +95,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
                           else return RGXOOM
 
   int nstates = state_number;
-  int n = 0, op;
+  int n = 0, op, charclass [256], nc;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;
   while ( ( op = *rpn++ ) >= 0 ) {
@@ -137,6 +137,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           break;
         default:
           /* Unknown */
+          error ("rgx nfa : unimplemented rule ");
           return RGXERR;
       }
     }

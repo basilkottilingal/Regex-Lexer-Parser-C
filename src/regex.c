@@ -252,14 +252,15 @@ int rgx_rpn ( char * s, int * rpn ) {
         .. Groupings [ ], ( ) and < >  ( < > is replacement for [^] )
         */
         case '[' :
-        case '<' : OPERATION ( op );        /* creates a char stack */
+        case '<' :
+          PUSH (stack, op);                 /* creates a char stack */
         case '(' :
           if ( last & (RGXOPD | RGXOPN) ) {
             PUSH (queue, op);
             PUSH (queue, RGXOP(';'));
             break;
           }
-          OPERATOR ( op );
+          OPERATOR ( op ); /* keept it until you find closing ],>,) */
           break;
         case '>' :
         case ']' :
@@ -325,7 +326,7 @@ int rgx_rpn ( char * s, int * rpn ) {
       return RGXERR;
     }
     stack.a[stack.n] = RGXEOE;
-    return *rgx - s;
+    return *rgx - s;  /* returns length of characters in regex */
   }
 
   stack.a[stack.n] = RGXERR;

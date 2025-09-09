@@ -31,9 +31,9 @@ typedef struct Fragment {
 
 static int state_number = 0;
 void state_reset () {
-  /* 
+  /*
   .. Set this, if you plan to make DFA later. Bitsets
-  .. of indices of nfa can be made only if their 
+  .. of indices of nfa can be made only if their
   .. index fall in  [0, nnfa)
   */
   state_number = 0;
@@ -89,13 +89,16 @@ static void concatenate ( Dangling * d, State * s ) {
 
 int rpn_nfa ( int * rpn, State ** start, int itoken ) {
 
-  #define  STT(_f_,_a,_b) s = state (_f_,_a,_b); if(s == NULL) return RGXOOM
-  #define  POP(_e_)       if (n) _e_ = stack[--n]; else return RGXERR;
-  #define  PUSH(_s_,_d_)  if (n < RGXSIZE) stack[n++] = (Fragment){ _s_, _d_} ; \
-                          else return RGXOOM
+  #define  STT(_f_,_a,_b)   s = state (_f_,_a,_b);                   \
+                            if(s == NULL) return RGXOOM
+  #define  POP(_e_)         if (n) _e_ = stack[--n];                 \
+                            else return RGXERR;
+  #define  PUSH(_s_,_d_)    if (n < RGXSIZE)                         \
+                              stack[n++] = (Fragment){ _s_, _d_} ;   \
+                            else return RGXOOM
 
   int nstates = state_number;
-  int n = 0, op, charclass [256], nc;
+  int n = 0, op, charclass = 0, charstack [256], nchar, queue [2], nq;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;
   while ( ( op = *rpn++ ) >= 0 ) {
@@ -135,6 +138,12 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           STT (NFAEPS, e.state, NULL );
           PUSH ( s, append (e.out, (Dangling *) (& s->out[1]) ) );
           break;
+        case '[' :
+          charclass = 1;
+          break;
+        case ']' :
+          charclass = 0;
+          break;
         default:
           /* Unknown */
           error ("rgx nfa : unimplemented rule ");
@@ -142,6 +151,9 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
       }
     }
     else {
+      if ( charclass ) {
+        continue;
+      }
       STT ( op, NULL, NULL );
       PUSH ( s, (Dangling *) (s->out) );
     }
@@ -208,7 +220,8 @@ int states_at_start ( State * nfa, Stack * list, State *** buff ) {
   return states_add ( nfa, list, buff );
 }
 
-int states_transition ( Stack * from, Stack * to, State *** buff, int c ) {
+int 
+states_transition ( Stack * from, Stack * to, State *** buf, int c ) {
   stack_reset (to);
   ++counter;
   int status = 0;
@@ -216,7 +229,7 @@ int states_transition ( Stack * from, Stack * to, State *** buff, int c ) {
   for (int i = 0; i < from->nentries && !status; ++i ) {
     State * s = stack [i];
     if ( s->id == c )
-      status = states_add ( s->out[0], to, buff );
+      status = states_add ( s->out[0], to, buf );
   }
   return status;
 }

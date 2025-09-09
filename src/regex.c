@@ -13,7 +13,7 @@
 .. Operations      |    Example
 .. ----------------|--------------
 .. Grouping        |  (), [], [^]
-.. Unary operators |  x*, x?, x+, x{m}
+.. Unary operators |  x*, x?, x+, x{n}, x{n,m}
 .. Concatenation   |      x;y
 .. Union           |      x|y
 .. ----------------|--------------
@@ -26,7 +26,7 @@
 #define  RGXCHR(_c) ( ((_c) < 32 || (_c) > 126) ? EOF : (int) (_c) )
 static int rgx_input ( char ** str ) {
   /*
-  .. Doesn't expect value outside [32,126) except for '\0'. Unicode
+  .. Doesn't expect value outside [32,126] except for '\0'. Unicode
   .. characters are not allowed in the regex expr. If you want the
   .. regex to represent tokens with unicode characters, use  "\uXXXX".
   .. Non printable ascii characters, i.e c ∈ [0,32) ∪ (126, 256),
@@ -95,7 +95,7 @@ int rgx_token ( char ** str ) {
           RTN (hh);
         case 'p' : case 'P' : case 'b' : case 'u' : case 'U' :
           error ("rgx : not yet implemented \\%c", (char) c);
-          RTN (RGXERR);  
+          RTN (RGXERR);
         default  :
           RTN (c);
       }
@@ -178,9 +178,10 @@ int rgx_token ( char ** str ) {
 enum {
   RGXBGN = 0, /* Just started */
   RGXEND = 8, /* Ending */
+
               /* Last action was pushing .. */
-  RGXOPD = 1, /* .. a literal operand to stack */
-  RGXOPN = 2, /* .. an operator to ostack i.e reduction operation */
+  RGXOPD = 1, /* .. a literal operand to RPN stack */
+  RGXOPN = 2, /* .. an operator to RPN stack i.e reduction operation */
   RGXOPR = 4  /* .. an operator to the operators stack */
 };
 
@@ -191,7 +192,6 @@ typedef struct iStack {
 /*
 .. Reverse polish notation
 */
-
 int rgx_rpn ( char * s, int * rpn ) {
 
   #define  TOP(_s_)           ( _s_.n ? _s_.a[_s_.n - 1] : 0 )
@@ -209,20 +209,7 @@ int rgx_rpn ( char * s, int * rpn ) {
   iStack ostack = STACK (RGXOPS, RGXSIZE),
     stack = STACK (rpn, RGXSIZE),
     queue = STACK (queued, 4);
-  while ( 1 ) {
-    op = queue.n ? queue.a[--queue.n] : rgx_token (rgx) ;
-    if ( op == RGXEOE ) {
-      for (int i=0; i<2 && TOP (ostack); ++i)
-        PUSH (stack, POP(ostack));
-      if (TOP (ostack)) return RGXERR;
-      stack.a[stack.n] = RGXEOE;
-      return *rgx - s;
-    }
-    if ( op < 0 ) {
-      stack.a[stack.n] = RGXERR;
-      error ("rgx error : wrong expression "); 
-      return op;
-    }
+  while ((op = queue.n ? queue.a[--queue.n] : rgx_token (rgx)) >= 0){
     if ( ISRGXOP (op) ) {
       switch ( op & 255 ) {
         /*
@@ -239,18 +226,19 @@ int rgx_rpn ( char * s, int * rpn ) {
           OPERAND (op);
           break;
 
-        /* 
+        /*
         .. Unary operators which are already postfix in regex.
         */
         case '*' : case '?' : case '+' :
-        case '~' : case '!' :
-          if ( !(last & (RGXOPD | RGXOPN)) ) return RGXERR;
+          if ( !(last & (RGXOPD | RGXOPN)) ) {
+            return RGXERR;
+          }
           OPERATION (op);
           break;
         case '{' :
           if ( !(last & (RGXOPD | RGXOPN)) ) return RGXERR;
           int n = token [1], m = token [2];
-          OPERATION (op); OPERATION (n); 
+          OPERATION (op); OPERATION (n);
           OPERATION (m);  OPERATION (RGXOP ('}'));
           break;
 
@@ -264,7 +252,7 @@ int rgx_rpn ( char * s, int * rpn ) {
         .. Groupings [ ], ( ) and < >  ( < > is replacement for [^] )
         */
         case '[' :
-        case '<' : 
+        case '<' : OPERATION ( op );        /* creates a char stack */
         case '(' :
           if ( last & (RGXOPD | RGXOPN) ) {
             PUSH (queue, op);
@@ -273,23 +261,23 @@ int rgx_rpn ( char * s, int * rpn ) {
           }
           OPERATOR ( op );
           break;
-        case '>' : PUSH (queue, RGXOP ('~'));
+        case '>' :
         case ']' :
         case ')' :
           /*
-          .. '>' = '<' + 2,
-          .. ']' = '[' + 2,
-          .. ')' = '(' + 1
+          .. '>' = '<' + 2, ']' = '[' + 2, ')' = '(' + 1
           */
           int c = op - 2 + (op == RGXOP(')'));
           for (int i=0; i<2 && ( TOP (ostack) != c ); ++i)
             PUSH (stack, POP (ostack));
           if ( POP (ostack) != c )
             return RGXERR;                  /* depth should be <= 2 */
+          if ( op != RGXOP (')') )
+            OPERATION (op);                  /* finalize char class */
           last = RGXOPN;
           break;
 
-        case ',' : /* '-' has precedence over OR (implicit) in [] */
+        case ',' :   /* '-' has precedence over OR (implicit) in [] */
           if ( TOP (ostack) == RGXOP('-') )
             PUSH (stack, POP(ostack));
         case ';' :
@@ -307,12 +295,15 @@ int rgx_rpn ( char * s, int * rpn ) {
           break;
 
         case '-' :
-          if (last != RGXOPD) return RGXERR;
-          if (TOP(ostack) == op) PUSH (stack, POP(ostack));
+          if (last != RGXOPD)
+            return RGXERR;
+          if (TOP(ostack) == op)
+            PUSH (stack, POP(ostack));
           OPERATOR (op);
           break;
 
         default :
+          error ("rgx rpn : unknown operator %c", (char) c);
           return RGXERR;
       }
     }
@@ -325,8 +316,21 @@ int rgx_rpn ( char * s, int * rpn ) {
       OPERAND (op);
     }
   }
+    
+  if ( op == RGXEOE ) {
+    for (int i=0; i<2 && TOP (ostack); ++i)
+      PUSH (stack, POP(ostack));
+    if (ostack.n) {
+      error ("rgx rpn : missing operand");
+      return RGXERR;
+    }
+    stack.a[stack.n] = RGXEOE;
+    return *rgx - s;
+  }
 
-  return RGXERR;
+  stack.a[stack.n] = RGXERR;
+  error ("rgx rpn : wrong expression ");
+  return op;
 
   #undef  POP
   #undef  TOP
@@ -340,4 +344,3 @@ int rgx_rpn ( char * s, int * rpn ) {
 void rgx_free () {
   destroy ();
 }
-

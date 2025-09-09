@@ -96,9 +96,14 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   #define  PUSH(_s_,_d_)    if (n < RGXSIZE)                         \
                               stack[n++] = (Fragment){ _s_, _d_} ;   \
                             else return RGXOOM
+  #define  QUEUE(_c_)       if (nq == 4) return RGXOOM;              \
+                            queue[nq++] = _c_
+  #define  UNQUEUE(_c_)     ( nq ? queue[--nq] : EOF )
+  #define  CLASS(_c_)                                                \
+     ( nchar < 256 ? (charstack[nchar++] =  _c_) : RGXOOM )
 
   int nstates = state_number;
-  int n = 0, op, charclass = 0, charstack [256], nchar, queue [2], nq;
+  int n = 0, op, charclass = 0, charstack [256], nchar, queue [4], nq;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;
   while ( ( op = *rpn++ ) >= 0 ) {
@@ -106,8 +111,8 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
       switch (op & 255) {
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
-        case '^' : case '$' : case '~' :
-        case ',' : case '-' : case '#' :
+        case '^' : case '$' : case '{' :
+        case '.' :
           /* Not yet implemented */
           return RGXERR;
         case ';' :
@@ -139,10 +144,28 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           PUSH ( s, append (e.out, (Dangling *) (& s->out[1]) ) );
           break;
         case '[' :
+        case '<' :
           charclass = 1;
+          nq = nchar = 0;
           break;
         case ']' :
+          if (nq) { CLASS (UNQUEUE ()); }
+          if (nq) return RGXERR;
           charclass = 0;
+          break;
+        case '>' :
+          break; 
+        case ',' :
+          while (nq) {
+            CLASS ( UNQUEUE () );
+          }
+          break;
+        case '-' :
+          int b = UNQUEUE (), a = UNQUEUE ();
+          if ( a == EOF || b == EOF ) return RGXERR;
+          for (int k=a; k<=b; ++k) {
+            CLASS ( k );
+          }
           break;
         default:
           /* Unknown */
@@ -152,6 +175,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
     }
     else {
       if ( charclass ) {
+        QUEUE ( op );
         continue;
       }
       STT ( op, NULL, NULL );

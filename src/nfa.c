@@ -38,32 +38,93 @@ static int nclass = 0;
 .. (b) given a list of rgx, it pre evaluate equivalence classes
 */
 void nfa_reset ( Stack * rgxlist ) {
+
   nfa_counter = 0;
+
   int csingle [256], cstack [256],      /* For single char eq class */
-    nc = 0, group [256], ig,          /* For charcter set [], [^..] */
-    nr = rgxlist->len / sizeof (void *),  /* number of rgx pattersn */
-    rpn [RGXSIZE], charclass = 0, queue [4], nq;
+    nc = 0, group [256],              /* For charcter set [], [^..] */
+    nr = rgxlist->len / sizeof (void *),  /* number of rgx patterns */
+    rpn [RGXSIZE], err = 0;
+
+  #define ERRB(cond) if (cond) { err = 1; break; }
+
   char ** rgx = (char **) rgxlist->stack;
   memset (csingle, 0, sizeof (csingle));
-/*
+
   class_init ();
+
   for (int i=0; i<nr; ++i) {
-    rgx_rpn (rgx[i], rpn) ) {
-      error (
-      return RGXERR;
+    rgx_rpn (rgx[i], rpn);
+    int j = 0, c, ng = 0, queue [4], nq = 0, charclass = 0;
+    while ( (c=rpn[j++]) >= 0 ) {
+      ERRB (err || nq == 4 || ng == 256);
+      if (!ISRGXOP (c)) {
+        if (charclass) {
+          queue [nq++] = c;
+          continue;
+        }
+        if (csingle [c])
+          continue;
+        csingle [c] = 1;           /* single char equivalence group */
+        cstack [nc++] = c;
+        continue;
+      }
+      switch ( (c &= 255) ) {
+        case '[' :  case '<' :
+          ng = 0, charclass = 1;
+          break;
+        case '-' :
+          ERRB (nq < 2);  /* need two operand to calculate range a-b*/
+          int b = queue [--nq], a = queue[--nq];
+          for (int k=a; k<=b && ng < 256; ++k)
+            group [ng++] = k;
+          break;
+        case ',' :
+          ERRB (nq > 2 || ng > 254);
+          while (nq)
+            group [ng++] = queue[--nq];
+          break;
+        case ']' : case '>' :
+          if (nq)
+            group [ng++] = c;
+          ERRB (nq);
+          class_refine (group, ng);  /* refine for character class */
+          charclass = 0;
+          break;
+        case 'd' : case 'w' : case 's' :
+        case 'D' : case 'W' : case 'S' :
+        case '.' :
+          ERRB (1); //fixme : implement
+      }
     }
+    ERRB (err);
   }
 
-  / 
-
-  while (nr--) {
-    rgx = ptr [nr];
+  while (nc--) {
+    class_char ( cstack [nc] );
   }
 
-  for (int j=0; j<nc; ++j ) {
-    class_char ( cstack [j] );
+  if (err) {
+    error ("nfa reset : unknown error in evaluating eq class");
+    return;
   }
-  */
+
+  class_get ( &class, &nclass );
+  #if 0
+  int * class = NULL, nclass = 0;
+  
+  char buff[] = " ";
+  printf ("\n [  ");
+  for (int i=0; i<256; ++i) {
+    buff [0] = (char) i;
+    printf ("%s %d  ", i>32 && i<126 ? buff : " ", class[i]);
+    if ( (i & (int) 15) == 0)
+      printf ("\n    ");
+  }
+  printf ("\n ]");
+  #endif
+
+  #undef ERRB
 }
 
 static State * state ( int id, State * a, State * b ) {
@@ -181,7 +242,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           charclass = 0;
           break;
         case '>' :
-          break; 
+          break;
         case ',' :
           while (nq) {
             CLASS ( UNQUEUE () );
@@ -216,11 +277,14 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   }
   concatenate ( e.out, fstate (itoken) );
   *start = e.state;
-  return nfa_counter - nnfa;
+  return nfa_counter - nnfa;           /* Return num of nfa created */
 
   #undef  PUSH
   #undef  POP
   #undef  STT
+  #undef  QUEUE
+  #undef  UNQUEUE
+  #undef  CLASS
 }
 
 int rgx_nfa ( char * rgx, State ** start, int itoken ) {
@@ -271,7 +335,7 @@ int states_at_start ( State * nfa, Stack * list, State *** buff ) {
   return states_add ( nfa, list, buff );
 }
 
-int 
+int
 states_transition ( Stack * from, Stack * to, State *** buf, int c ) {
   stack_reset (to);
   ++counter;
@@ -321,8 +385,8 @@ int states_bstack ( Stack * list, Stack * bits ) {
 int rgx_match ( char * rgx, const char * txt ) {
   State * nfa = NULL;
   char mem [ sizeof (void *) ];
-  Stack list = (Stack) { 
-    .stack = mem, .len = 0, .nentries = 0, .max = sizeof (mem) 
+  Stack list = (Stack) {
+    .stack = mem, .len = 0, .nentries = 0, .max = sizeof (mem)
   };
   nfa_reset (&list);
   if ( rgx_nfa (rgx, &nfa, 0) < 0 ) {

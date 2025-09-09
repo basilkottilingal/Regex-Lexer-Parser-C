@@ -191,7 +191,7 @@ typedef struct iStack {
 
 /*
 .. Reverse polish notation.
-.. For valid part of "rpn", it will have value >= 0, representing 
+.. For valid part of "rpn", it will have value >= 0, representing
 .. literals, operators, boundary assertions, character groups etc, It
 .. will be followed by a non-negative integer EOF (success), RGXERR
 .. (error) or RGXOOM (out of memory).
@@ -209,7 +209,9 @@ int rgx_rpn ( char * s, int * rpn ) {
   #define  OPERATOR(_c_)      PUSH (ostack, _c_); last = RGXOPR;
   #define  OPERAND(_c_)       PUSH (stack,  _c_); last = RGXOPD;
   #define  OPERATION(_c_)     PUSH (stack,  _c_); last = RGXOPN;
-  #define  ERR(cond)          if (cond) PUSH (stack, RGXERR)
+  #define  ERR(cond)          if (cond)                              \
+    return ( stack.n == stack.max ?                                  \
+       (stack.a[stack.n-1] = RGXOOM) : (stack.a[stack.n++] = RGXERR) )
 
   char ** rgx = &s;
   int queued[4], RGXOPS[RGXSIZE], op, last = RGXBGN;
@@ -321,7 +323,7 @@ int rgx_rpn ( char * s, int * rpn ) {
       OPERAND (op);
     }
   }
-    
+
   if ( op == RGXEOE ) {
     for (int i=0; i<2 && TOP (ostack); ++i)
       PUSH (stack, POP(ostack));
@@ -334,7 +336,8 @@ int rgx_rpn ( char * s, int * rpn ) {
   }
 
   error ("rgx rpn : wrong expression ");
-  return op;
+  PUSH (stack, op);
+  return RGXERR;
 
   #undef  POP
   #undef  TOP

@@ -51,6 +51,7 @@ all: obj/rgx.a
 	$(MAKE) obj/nfa.tst
 	$(MAKE) obj/bits.tst
 	$(MAKE) obj/class.tst
+	$(MAKE) obj/charclass.tst
 	$(MAKE) obj/min-dfa.tst
 	$(MAKE) obj/hopcroft.tst
 	$(MAKE) obj/hopcroft.tst

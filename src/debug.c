@@ -54,6 +54,7 @@ int rgx_rpn_print ( int * rpn ) {
     else {
       assert (PUSH(op) >= 0);
     }
+    printf("\033[0m");
     fflush(stdout);
   }
 

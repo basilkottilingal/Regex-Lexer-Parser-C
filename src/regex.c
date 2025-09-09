@@ -253,13 +253,14 @@ int rgx_rpn ( char * s, int * rpn ) {
         */
         case '[' :
         case '<' :
-          PUSH (stack, op);                 /* creates a char stack */
         case '(' :
           if ( last & (RGXOPD | RGXOPN) ) {
             PUSH (queue, op);
             PUSH (queue, RGXOP(';'));
             break;
           }
+          if ( charclass )
+            PUSH (stack, op);               /* creates a char stack */
           OPERATOR ( op ); /* keept it until you find closing ],>,) */
           break;
         case '>' :

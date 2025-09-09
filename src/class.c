@@ -5,7 +5,13 @@
 .. Now, the equivalence class is the function
 .. C(c) : Σ → {0, 1, ..., |P| − 1} which maps c to p[i]
 .. i.e.   C(c) = i ⇐⇒ c ∈ p[i]
-.. Our aim is to look for the coarsest partition, or the one
+..
+.. The aim of evaluating equivalence classes is (a) to reduce 
+.. the size of transition (nfa->next[]) table from |Σ| to |P|, and 
+.. (b) to reduce the computational cost in the algorithms like
+.. Hopcroft minimization ( O (m⋅n⋅log(n)) ) where m is the
+.. size of equivalence class, and n is the number of dfa states.
+.. So our aim is to look for the coarsest partition, or the one
 .. that satisfy above condition (cond-1) and minimises |P(Σ)|.
 ..
 .. We initialize ( class_init() )  with

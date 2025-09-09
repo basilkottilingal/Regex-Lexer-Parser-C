@@ -15,7 +15,8 @@ int main () {
   DState * dfa = NULL;
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
     int status = rgx_dfa (rgx[i], &dfa);
-    if (status < 0) { 
+    if (status < 0) {
+      errors (); 
       printf ("failed in creating DFA for rgx %s: %d", rgx[i], status); 
       continue;
     }

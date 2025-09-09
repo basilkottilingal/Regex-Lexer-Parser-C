@@ -13,7 +13,7 @@
 .. Operations      |    Example
 .. ----------------|--------------
 .. Grouping        |  (), [], [^]
-.. Unary operators |  x*, x?, x+
+.. Unary operators |  x*, x?, x+, x{m}
 .. Concatenation   |      x;y
 .. Union           |      x|y
 .. ----------------|--------------
@@ -23,13 +23,13 @@
 .. can be compounded.
 */
 
-#define  RGXCHR(_c) ( (int) ((_c) < 32 || (_c) > 126) ? EOF : (_c) )
+#define  RGXCHR(_c) ( ((_c) < 32 || (_c) > 126) ? EOF : (int) (_c) )
 static int rgx_input ( char ** str ) {
   /*
   .. Doesn't expect value outside [32,126) except for '\0'. Unicode
   .. characters are not allowed in the regex expr. If you want the
   .. regex to represent tokens with unicode characters, use  "\uXXXX".
-  .. Non printable ascii characters, i.e c ∈ [0,32) ∪ [126, 256),
+  .. Non printable ascii characters, i.e c ∈ [0,32) ∪ (126, 256),
   .. are taken as end of regex expression
   */
   char c = *(*str)++;
@@ -40,20 +40,22 @@ static int token[3] = {0};
 static int charclass = 0;
 
 /*
-.. We break down the regex to tokens of 
-.. (a) literals in [0, 256) (normal ascii literals, escaped, 
-.. unicode literals starting with \u, hex starting with \x).
-.. (b) operators in regex : .^{}()[]<>,?+*$;,-
-.. Some of those operators are defined additionally to identify some
-.. operations. Ex: ';' is used for appending. ',' is also used for
-.. appending, but inside character class []. '<''>' is used for 
-.. negated character class [^]. 
-.. (c) character groups like \D, \d, \w, \W, \s,\S.
+.. We break down the regex to tokens of
+.. (a) literals in [0, 0xFF) (normal ascii literals, escaped
+.. literals, unicode literals starting with \u, hex starting with \x).
+.. Note that, unicode literal > 0xFF has to be split to multiple
+.. literals each in [0, 0xFF) and appended one after the other.
+.. (b) operators in regex : ^{}()[]<>?+*$;,-
+.. Some of those operators are defined and used temporarily to
+.. identify some operations. Ex: ';' is used for appending.
+.. ',' is also used for appending, but inside character class [].
+.. '<' and '>' is used for the negated character class [^].
+.. (c) character groups like ., \D, \d, \w, \W, \s and \S.
 .. Both operators and character groups are encoded by adding 256, so
 .. that all number [0,256) are identified as literals and others have
 .. special meaning.
 .. (d) EOF : as end of expression for '\0' and other non-printable
-.. ascii values outside [32,126)
+.. ascii values outside [32,126]
 */
 int rgx_token ( char ** str ) {
 
@@ -91,28 +93,9 @@ int rgx_token ( char ** str ) {
             hh = (hh << 4) | d;
           }
           RTN (hh);
-        case 'p' : case 'P' : case 'b' :
-          /*
-          .. Not yet implemented
-          */
+        case 'p' : case 'P' : case 'b' : case 'u' : case 'U' :
+          error ("rgx : not yet implemented \\%c", (char) c);
           RTN (RGXERR);  
-        case 'u' :
-          /*
-          .. \uHHHH represnting [0x0000-0xFFFF] split over
-          .. two bytes [0x00-0xFF] [0x00-0xFF]
-          */
-          ERR (charclass);
-          int * r = &token[1];
-          for (int j=0; j<2; ++j) {
-            int hh = 0;
-            for (int i=0; i<2; ++i) {
-              INPUT ();
-              ERR ((d = HEX(c)) == 16);
-              hh = (hh << 4) | d;
-            }
-            r[j] = hh;
-          }
-          RTN (RGXOP ('u'));
         default  :
           RTN (c);
       }
@@ -179,7 +162,7 @@ int rgx_token ( char ** str ) {
       /* Errors: {n,m,}, {}, {,}, {n,m} with m<n.
       .. {0}, {0,0}, {,0} will be simply omitted */
       ERR ( !nread || r[1] < r[0] );
-      RTN ( !r[1] ? rgx_token (str) : RGXOP('#') );
+      RTN ( !r[1] ? rgx_token (str) : RGXOP('{') );
     default :
       RTN (c);
   }
@@ -193,11 +176,12 @@ int rgx_token ( char ** str ) {
 }
 
 enum {
-  RGXBGN = 0, /* Just started parsing */
-  RGXOPD = 1, /* Last action was pushing a literal operand to stack */
-  RGXOPN = 2, /* Last action was pushing an operator which completes a reduction operation */
-  RGXOPR = 4, /* Pushin an operator to the operators stack */
-  RGXEND = 8  /* Ending */
+  RGXBGN = 0, /* Just started */
+  RGXEND = 8, /* Ending */
+              /* Last action was pushing .. */
+  RGXOPD = 1, /* .. a literal operand to stack */
+  RGXOPN = 2, /* .. an operator to ostack i.e reduction operation */
+  RGXOPR = 4  /* .. an operator to the operators stack */
 };
 
 typedef struct iStack {
@@ -207,113 +191,119 @@ typedef struct iStack {
 /*
 .. Reverse polish notation
 */
+
 int rgx_rpn ( char * s, int * rpn ) {
 
-  #define  PUSH(_s_,_c_)        ( _s_.n == _s_.max ? \
-    (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_))
-  #define  TOP(_s_)             ( _s_.n ? _s_.a[_s_.n - 1] : '\0' )
-  #define  POP(_s_)             ( _s_.n ? _s_.a[--_s_.n] : '\0' )
-  #define  STACK(_a_,_m_)       (iStack) {.a = _a_, .n = 0, .max = _m_}
-  #define  RTN(_s_,_c_)         if (PUSH(_s_,_c_)<RGXEOE) return TOP(_s_)
-  #define  OPERATOR(_c_)        RTN(ostack,_c_); last = RGXOPR;
-  #define  OPERAND(_c_)         RTN(stack,_c_);  last = RGXOPD;
-  #define  OPERATION(_c_)       RTN(stack,_c_);  last = RGXOPN;
+  #define  TOP(_s_)           ( _s_.n ? _s_.a[_s_.n - 1] : 0 )
+  #define  POP(_s_)           ( _s_.n ? _s_.a[--_s_.n] : 0 )
+  #define  STACK(_a_,_m_)     (iStack) {.a = _a_, .n = 0, .max = _m_}
+  #define  PUSH(_s_,_c_)      if (( _s_.n == _s_.max ?               \
+    (_s_.a[_s_.n-1] = RGXOOM) : (_s_.a[_s_.n++] = _c_)) < EOF )   \
+                                 return TOP(_s_)
+  #define  OPERATOR(_c_)      PUSH (ostack, _c_); last = RGXOPR;
+  #define  OPERAND(_c_)       PUSH (stack,  _c_); last = RGXOPD;
+  #define  OPERATION(_c_)     PUSH (stack,  _c_); last = RGXOPN;
 
   char ** rgx = &s;
-  int queued[4];
-  int RGXOPS[RGXSIZE];
-  iStack stack  = STACK (rpn, RGXSIZE),
-        ostack = STACK (RGXOPS, RGXSIZE),
-        queue  = STACK (queued, 4);
-  int op, last = RGXBGN, *range = &token[1];
-  while ( ( op = TOP (queue) ? POP (queue) : rgx_token (rgx) ) ) {
+  int queued[4], RGXOPS[RGXSIZE], op, last = RGXBGN;
+  iStack ostack = STACK (RGXOPS, RGXSIZE),
+    stack = STACK (rpn, RGXSIZE),
+    queue = STACK (queued, 4);
+  while ( ( op = queue.n ? queue.a[--queue.n] : rgx_token (rgx) ) ) {
     if ( op == RGXEOE ) {
       for (int i=0; i<2 && TOP (ostack); ++i)
-        RTN (stack, POP(ostack));
+        PUSH (stack, POP(ostack));
       if (TOP (ostack)) return RGXERR;
       stack.a[stack.n] = RGXEOE;
       return *rgx - s;
     }
     if ( op < 0 ) {
       stack.a[stack.n] = RGXERR;
-      error ( "rgx error : wrong expression "); return op;
+      error ("rgx error : wrong expression "); 
+      return op;
     }
     if ( ISRGXOP (op) ) {
       switch ( op & 255 ) {
-
-        case 'u' :
-          /* \uHHHH  split into two literals both in [0,256)*/
-          OPERAND (range[0]); OPERAND (range[1]);
-          break;
-
-        case 'd' : case 's' : case 'S' :
-        case 'w' : case 'D' : case 'W' :
-          /* Not yet implemented */
+        case 'd' : case 's' : case 'w' :
+        case 'D' : case 'S' : case 'W' :
+        case '.' :
           if ( last & (RGXOPD | RGXOPN) ) {
-            RTN (queue, op);
-            RTN (queue, RGXOP(charclass ? ',' : ';'));
+            PUSH (queue, op);
+            PUSH (queue, RGXOP(charclass ? ',' : ';'));
             break;
           }
           OPERAND (op);
           break;
 
         /* Unary operators which are already postfix in regex. */
-        case '#' :
-          /* Range is also pushed
-          OPERAND (range[1]); OPERAND (range[0]);
-          */
         case '*' : case '?' : case '+' :
         case '~' : case '!' :
           if ( !(last & (RGXOPD | RGXOPN)) ) return RGXERR;
           OPERATION (op);
           break;
-
-        case '^' : case '$' :
-          /* Special cases. Not yet implemented*/
+        case '{' :
+          if ( !(last & (RGXOPD | RGXOPN)) ) return RGXERR;
+          int n = token [1], m = token [2];
+          OPERATION (op); OPERATION (n); 
+          OPERATION (m);  OPERATION (RGXOP ('}'));
           break;
 
-        /* Groupings [..], (..) and <..> (<..> is replacement for  as [^..]*/
-        case '[' : case '<' : case '(' :
+        /* Non-consuming, boundary assertion patters */
+        case '^' : case '$' :
+          break;
+
+        /*
+        .. Groupings [ ], ( ) and < >  ( < > is replacement for [^] )
+        */
+        case '[' :
+        case '<' : 
+        case '(' :
           if ( last & (RGXOPD | RGXOPN) ) {
-            /* Handling the implicit append operator */
-            RTN (queue, op);
-            RTN (queue, RGXOP(';'));
+            PUSH (queue, op);
+            PUSH (queue, RGXOP(';'));
             break;
           }
           OPERATOR ( op );
           break;
+        case '>' :
+        case ']' :
+        case ')' :
+          if (charclass == 2)
+            PUSH (queue, RGXOP ('~'));   /* Negated character class */
+          /*
+          .. '>' = '<' + 2,
+          .. ']' = '[' + 2,
+          .. ')' = '(' + 1
+          */
+          int c = op - 2 + (op == RGXOP(')'));
+          for (int i=0; i<2 && ( TOP (ostack) != c ); ++i)
+            PUSH (stack, POP (ostack));
+          if ( POP (ostack) != c )
+            return RGXERR;                  /* depth should be <= 2 */
+          last = RGXOPN;
+          break;
 
         case ',' : /* '-' has precedence over OR (implicit) in [] */
-          if ( TOP (ostack) == RGXOP('-') ) RTN (stack, POP(ostack));
+          if ( TOP (ostack) == RGXOP('-') )
+            PUSH (stack, POP(ostack));
         case ';' :
-          if ( TOP (ostack) == op ) RTN (stack, POP(ostack));
+          if ( TOP (ostack) == op )
+            PUSH (stack, POP(ostack));
           OPERATOR (op);
           break;
 
         case '|' :
-          if ( TOP (ostack) == RGXOP(';') )  RTN (stack, POP(ostack));
-          if ( TOP (ostack) == RGXOP('|') )  RTN (stack, POP(ostack));
+          if ( TOP (ostack) == RGXOP(';') )
+            PUSH (stack, POP(ostack));
+          if ( TOP (ostack) == RGXOP('|') )
+            PUSH (stack, POP(ostack));
           OPERATOR (op);
-          break;
-
-        case '>' :
-        case ']' :
-        case ')' :
-          /* For reduction of [] or [^] */
-          if (charclass)
-            RTN (queue, charclass == 2 ? RGXOP ('~') :  RGXOP ('!') );
-          /* '>'='<'+2, ']'='['+2,  ')'='('+1 */
-          int c = op - 2 + (op == RGXOP(')'));
-          for (int i=0; i<2 && ( TOP (ostack) != c ); ++i)
-            RTN (stack, POP(ostack));
-          if ( POP (ostack) != c ) return RGXERR;
-          last = RGXOPN;
           break;
 
         case '-' :
           /* Expects a literal before '-' operator */
           if (last != RGXOPD) return RGXERR;
-          if (TOP(ostack) == op) RTN (stack, POP(ostack));
+          if (TOP(ostack) == op) PUSH (stack, POP(ostack));
           OPERATOR (op);
           break;
 
@@ -324,8 +314,8 @@ int rgx_rpn ( char * s, int * rpn ) {
     }
     else {
       if ( last & (RGXOPD | RGXOPN) ) {
-        RTN (queue, op);
-        RTN (queue, RGXOP(charclass ? ',' : ';'));
+        PUSH (queue, op);
+        PUSH (queue, RGXOP(charclass ? ',' : ';'));
         continue;
       }
       OPERAND (op);
@@ -337,7 +327,7 @@ int rgx_rpn ( char * s, int * rpn ) {
   #undef  POP
   #undef  TOP
   #undef  STACK
-  #undef  RTN
+  #undef  PUSH
   #undef  OPERATOR
   #undef  OPERAND
   #undef  OPERATION

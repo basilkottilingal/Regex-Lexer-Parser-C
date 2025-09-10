@@ -17,7 +17,7 @@
 
 typedef struct DState {
   Stack * list;
-  struct DState * next [256];
+  struct DState ** next;
   struct DState * hchain;
   Stack * bits;
   int i, flag;
@@ -45,10 +45,13 @@ static DState * state ( Stack * list, Stack * bits, int * exists) {
   }
   *exists = 0;
   d = allocate ( sizeof (DState) );
-  d->hash = hash;
-  RGXMATCH (d) = RGXMATCH (list);
-  d->list = stack_copy ( list );
-  d->bits = stack_copy ( bits );
+  *d = (DState) {
+    .next = allocate ( nclass * sizeof (DState *)),
+    .hash = hash,
+    .flag = RGXMATCH (list),
+    .list = stack_copy ( list ),
+    .bits = stack_copy ( bits )
+  };
   return (*ptr = d);
 }
 
@@ -121,19 +124,19 @@ rgx_dfa_tree ( DState * root, Stack ** states ) {
                                    /* iterate each nfa of dfa cache */
       dfa = stack[n-1].d;
       c = s->id;
-      if (c < 256 && dfa->next[c] == NULL ) {
-        if (states_transition (dfa->list, list, buff, c) < 0) {
+      if (c >= 256 || dfa->next[c] ) continue;
+        
+      if (states_transition (dfa->list, list, buff, c) < 0) {
           RTN (RGXERR);
-        }
-        dfa->next[c] = state (list, bits, &exists);
-        if (!exists) {   /* 'dfa' was recently pushed to hash table */
-          dfa = dfa->next[c];
-          if (n == RGXSIZE) { RTN (RGXOOM); }
-          stack[n++] = (struct tree) { /* PUSH() & go down the tree */
-            dfa, (State **) dfa->list->stack,
-            dfa->list->len / sizeof (void *)
-          };
-        }
+      }
+      dfa->next[c] = state (list, bits, &exists);
+      if (!exists) {   /* 'dfa' was recently pushed to hash table */
+        dfa = dfa->next[c];
+        if (n == RGXSIZE) { RTN (RGXOOM); }
+        stack[n++] = (struct tree) { /* PUSH() & go down the tree */
+          dfa, (State **) dfa->list->stack,
+          dfa->list->len / sizeof (void *)
+        };
       }
     }
 
@@ -200,7 +203,8 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
     *d = (DState) {
       .list = stack_copy (cache),
-      .i    = j
+      .i    = j,
+      .next = allocate ( nclass * sizeof (DState *))
     };
   }
   stack_free (cache);
@@ -363,13 +367,12 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   #undef STACK
   #undef COPY
 
-int rgx_list_dfa ( Stack * list, DState ** dfa ) {
-  int nr = list->len / sizeof (void *), n, nt = 0;
+int rgx_list_dfa ( char ** rgx, int nr, DState ** dfa ) {
+  int n, nt = 0;
   State * nfa = allocate ( sizeof (State) ),
     ** out = allocate ( (nr+1) * sizeof (State *) );
-  nfa_reset (list);
+  nfa_reset ( rgx, nr );
   class_get ( &class, &nclass );
-  char ** rgx = (char **) list->stack;
   for (int i=0; i<nr; ++i) {
     /*
     .. Note that the token number itoken = 0, is reserved for error
@@ -391,12 +394,7 @@ int rgx_list_dfa ( Stack * list, DState ** dfa ) {
 }
 
 int rgx_dfa ( char * rgx, DState ** dfa ) {
-  char mem [ sizeof (void *) ];
-  Stack list = (Stack) { 
-    .stack = mem, .len = 0, .nentries = 0, .max = sizeof (mem) 
-  };
-  stack_push (&list, rgx);
-  return rgx_list_dfa (&list, dfa);
+  return rgx_list_dfa (&rgx, 1, dfa);
 }
 
 int rgx_dfa_match ( DState * dfa, const char * txt ) {

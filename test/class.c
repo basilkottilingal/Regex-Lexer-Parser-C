@@ -45,14 +45,8 @@ int main () {
 
   /* Now let's see how character class is automatically created
   .. for a regex/regex list*/
-  char mem [ 32 ];
-  Stack rgxlist = (Stack) {
-    .stack = mem, .len = 0, .nentries = 0, .max = sizeof (mem)
-  };
   char * rgx[] = { "www[a-fA-F]", "[_a-zA-Z]" };
-  stack_push (&rgxlist, rgx[0]);
-  stack_push (&rgxlist, rgx[1]);
-  nfa_reset (&rgxlist); /* We use the internal function that should
+  nfa_reset ( rgx, 2); /* We use the internal function that should
                     .. be called before nfa building */
 
   /* Print the eq table again */

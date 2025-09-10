@@ -13,10 +13,8 @@ int main () {
   //char * rgx[] = { "(aa|b)|(a(a|b))|(bc*)|(bc+)|(1?)|((a|b)+0)" };
   char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
 
-  Stack * list = stack_new ( 0 );
-  for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i)
-    stack_push ( list, rgx[i] ); 
-  nfa_reset (list);
+  int nrgx = sizeof (rgx) / sizeof (rgx[0]);
+  nfa_reset (rgx, nrgx);
 
   const char txt[] = "aaccbqaabbaba01bcccd";
   char buff[60];

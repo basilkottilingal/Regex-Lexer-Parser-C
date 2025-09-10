@@ -14,14 +14,13 @@ int main () {
   char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
   const char txt[] = "aaccbqaabbaba01bcccd";
   char buff[60];
-  Stack * stk = stack_new (0);
   printf ("Regex group ");
-  for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
+  int nrgx = sizeof (rgx) / sizeof (rgx[0]);
+  for (int i=0; i<nrgx; ++i) {
     printf ("\"%s\" ", rgx[i]);
-    stack_push (stk, rgx[i]);
   }
   DState * dfa = NULL;
-  int status = rgx_list_dfa (stk, &dfa);
+  int status = rgx_list_dfa (rgx, nrgx, &dfa);
   if (status < RGXEOE)  
     printf ("failed in creating NFAi for rgx group"); 
 

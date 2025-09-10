@@ -37,17 +37,15 @@ static int   nclass = 0;
 .. (a) reset nfa_counter to 0
 .. (b) given a list of rgx, it pre evaluate equivalence classes
 */
-void nfa_reset ( Stack * rgxlist ) {
+void nfa_reset ( char ** rgx, int nr ) {
 
   nfa_counter = 0;
 
   int csingle [256],                    /* For single char eq class */
     group [256],                      /* For charcter set [], [^..] */
-    nr = rgxlist->len / sizeof (void *),  /* number of rgx patterns */
     rpn [RGXSIZE],                                     /* RPN stack */
     err = 0;
   memset (csingle, 0, sizeof (csingle));
-  char ** rgx = (char **) rgxlist->stack;
 
   #define ERRB(cond) if (cond) { err = 1; break; }
 
@@ -381,12 +379,8 @@ int states_bstack ( Stack * list, Stack * bits ) {
 }
 
 int rgx_match ( char * rgx, const char * txt ) {
+  nfa_reset (&rgx, 1);
   State * nfa = NULL;
-  char mem [ sizeof (void *) ];
-  Stack list = (Stack) {
-    .stack = mem, .len = 0, .nentries = 0, .max = sizeof (mem)
-  };
-  nfa_reset (&list);
   if ( rgx_nfa (rgx, &nfa, 0) < 0 ) {
     error ("rgx match : regex error");
     return RGXERR;

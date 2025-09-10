@@ -214,7 +214,9 @@ int lxr_generator (const char * grammar, const char * output ){
   }
 
   DState * dfa = NULL;
-  if (rgx_list_dfa (r, &dfa) < 0) {
+  char ** rgx = (char **) r->stack;
+  int nrgx = r->len/sizeof (void *);
+  if (rgx_list_dfa (rgx, nrgx, &dfa) < 0) {
     error ("failed to create a minimal dfa");
     return RGXERR;
   }

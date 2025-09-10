@@ -29,9 +29,9 @@ typedef struct Fragment {
   Dangling * out;
 } Fragment;
 
-static int nfa_counter = 0;
+static int   nfa_counter = 0;
 static int * class = NULL;
-static int nclass = 0;
+static int   nclass = 0;
 
 /*
 .. (a) reset nfa_counter to 0
@@ -41,15 +41,15 @@ void nfa_reset ( Stack * rgxlist ) {
 
   nfa_counter = 0;
 
-  int csingle [256], cstack [256],      /* For single char eq class */
-    nc = 0, group [256],              /* For charcter set [], [^..] */
+  int csingle [256],                    /* For single char eq class */
+    group [256],                      /* For charcter set [], [^..] */
     nr = rgxlist->len / sizeof (void *),  /* number of rgx patterns */
-    rpn [RGXSIZE], err = 0;
+    rpn [RGXSIZE],                                     /* RPN stack */
+    err = 0;
+  memset (csingle, 0, sizeof (csingle));
+  char ** rgx = (char **) rgxlist->stack;
 
   #define ERRB(cond) if (cond) { err = 1; break; }
-
-  char ** rgx = (char **) rgxlist->stack;
-  memset (csingle, 0, sizeof (csingle));
 
   class_init ();
 
@@ -63,10 +63,7 @@ void nfa_reset ( Stack * rgxlist ) {
           queue [nq++] = c;
           continue;
         }
-        if (csingle [c])
-          continue;
         csingle [c] = 1;           /* single char equivalence group */
-        cstack [nc++] = c;
         continue;
       }
       switch ( (c &= 255) ) {
@@ -100,9 +97,9 @@ void nfa_reset ( Stack * rgxlist ) {
     ERRB (err);
   }
 
-  while (nc--) {
-    class_char ( cstack [nc] );
-  }
+  for (int c=0; c<256; ++c)
+    if (csingle [c])
+      class_char ( c );/* refine for each single character eq class */
 
   if (err) {
     error ("nfa reset : unknown error in evaluating eq class");
@@ -111,7 +108,6 @@ void nfa_reset ( Stack * rgxlist ) {
 
   class_get ( &class, &nclass );
   #if 0
-  int * class = NULL, nclass = 0;
   
   char buff[] = " ";
   printf ("\n [  ");
@@ -187,7 +183,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   #define  QUEUE(_c_)       if (nq == 4) return RGXOOM;              \
                             queue[nq++] = _c_
   #define  UNQUEUE(_c_)     ( nq ? queue[--nq] : EOF )
-  #define  CLASS(_c_)                                                \
+  #define  GROUP(_c_)                                                \
      ( nchar < 256 ? (charstack[nchar++] =  _c_) : RGXOOM )
 
   int nnfa = nfa_counter;
@@ -216,19 +212,19 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           break;
         case '+' :
           POP(e);
-          STT (NFAEPS, e.state, NULL );
+          STT ( NFAEPS, e.state, NULL );
           concatenate ( e.out, s );
           PUSH ( e.state, (Dangling *) (& s->out[1]) );
           break;
         case '*' :
           POP(e);
-          STT (NFAEPS, e.state, NULL );
+          STT ( NFAEPS, e.state, NULL );
           concatenate ( e.out, s );
           PUSH ( s, (Dangling *) (& s->out[1]) );
           break;
         case '?' :
           POP(e);
-          STT (NFAEPS, e.state, NULL );
+          STT ( NFAEPS, e.state, NULL );
           PUSH ( s, append (e.out, (Dangling *) (& s->out[1]) ) );
           break;
         case '[' :
@@ -237,22 +233,22 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           nq = nchar = 0;
           break;
         case ']' :
-          if (nq) { CLASS (UNQUEUE ()); }
+          if (nq) { GROUP (UNQUEUE ()); }
           if (nq) return RGXERR;
           charclass = 0;
           break;
-        case '>' :
-          break;
+        //case '>' :
+        //  break;
         case ',' :
           while (nq) {
-            CLASS ( UNQUEUE () );
+            GROUP ( UNQUEUE () );
           }
           break;
         case '-' :
+          if ( nq < 2 ) return RGXERR;
           int b = UNQUEUE (), a = UNQUEUE ();
-          if ( a == EOF || b == EOF ) return RGXERR;
           for (int k=a; k<=b; ++k) {
-            CLASS ( k );
+            GROUP ( k );
           }
           break;
         default:
@@ -266,7 +262,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
         QUEUE ( op );
         continue;
       }
-      STT ( op, NULL, NULL );
+      STT ( class [op], NULL, NULL );
       PUSH ( s, (Dangling *) (s->out) );
     }
   }
@@ -284,7 +280,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   #undef  STT
   #undef  QUEUE
   #undef  UNQUEUE
-  #undef  CLASS
+  #undef  GROUP
 }
 
 int rgx_nfa ( char * rgx, State ** start, int itoken ) {
@@ -336,15 +332,17 @@ int states_at_start ( State * nfa, Stack * list, State *** buff ) {
 }
 
 int
-states_transition ( Stack * from, Stack * to, State *** buf, int c ) {
+states_transition ( Stack * from, Stack * to,
+    State *** buff, int ec )
+{
   stack_reset (to);
   ++counter;
   int status = 0;
   State ** stack = (State **) from->stack;
   for (int i = 0; i < from->nentries && !status; ++i ) {
     State * s = stack [i];
-    if ( s->id == c )
-      status = states_add ( s->out[0], to, buf );
+    if ( s->id == ec )
+      status = states_add ( s->out[0], to, buff );
   }
   return status;
 }
@@ -360,14 +358,14 @@ int rgx_nfa_match ( State * nfa, const char * txt ) {
   if (status)         { RTN (status); }
   if (RGXMATCH (s0) )   end = txt;
   while ( (c =  0xFF & *txt++) ) {
-    status = states_transition ( s0, s1, buff, c );
+    status = states_transition ( s0, s1, buff, class [c] );
     t = s0; s0 = s1; s1 = t;
     if ( status )         {  RTN (status); }
     if ( RGXMATCH (s0) )  {  end = txt; continue; }
     if ( !s0->nentries )     break;
   }
   /* return val = number of chars that match rgx + 1 */
-  RTN (end ? (int) ( end - start + 1) : 0);
+  RTN (end ? (int) (end - start + 1) : 0);
 
   #undef RTN
 }

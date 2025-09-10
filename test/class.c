@@ -31,6 +31,7 @@ int main () {
   int * class = NULL, nclass = 0;
   class_get ( &class, &nclass );
 
+  /* Print the eq table*/
   char buff[] = " ";
   printf ("\n Eq class for char classes [\\0][a-z][a-f]");
   printf ("\n [  ");

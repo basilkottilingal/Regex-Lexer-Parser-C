@@ -7,15 +7,21 @@
 #include <string.h>
 
 #include "regex.h"
+#include "nfa.h"
 
 int main () {
   //char * rgx[] = { "(aa|b)|(a(a|b))|(bc*)|(bc+)|(1?)|((a|b)+0)" };
   char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
+
+  Stack * list = stack_new ( 0 );
+  for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i)
+    stack_push ( list, rgx[i] ); 
+  nfa_reset (list);
+
   const char txt[] = "aaccbqaabbaba01bcccd";
   char buff[60];
   State * nfa = NULL;
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
-
     int status = rgx_nfa (rgx[i], &nfa, 0);
     if (status < RGXEOE) 
       printf ("failed in creating NFAi for rgx %s: %d", rgx[i], status); 

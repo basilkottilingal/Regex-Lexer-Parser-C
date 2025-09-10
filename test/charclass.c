@@ -12,8 +12,6 @@ int main () {
     printf ("\nRpn for rgx \"%s\"", rgx[i]);
     rgx_rpn (rgx[i], rpn);
     rgx_rpn_print (rpn);
-    State * nfa = NULL;
-    if (rgx_nfa (rgx[i], &nfa, 1) < 0) errors ();
   }
 
   rgx_free();

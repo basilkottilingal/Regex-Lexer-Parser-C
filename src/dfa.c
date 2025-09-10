@@ -30,16 +30,18 @@ static int       nstates = 0;              /* Number of Dfa states. */
 static DState ** htable  = NULL;                /* Uses a hashtable */
 static int       hsize;                /* fixme : use prime numbers */
 static int       stacksize;    /* bit stack size rounded to 8 bytes */
+static int     * class = NULL;
+static int       nclass = 0;
 
 static DState * state ( Stack * list, Stack * bits, int * exists) {
   states_bstack (list, bits);
   uint32_t hash = stack_hash ((uint32_t *) bits->stack, bits->max);
-  DState ** ptr = &htable [hash % hsize], * d;
+  DState ** ptr = & htable [hash % hsize], * d;
   *exists = 1;
   while ( (d = *ptr) != NULL ) {          /* resolve hash collision */
     if (d->hash == hash && !stack_cmp (bits, d->bits))
       return d;
-    ptr = &d->hchain;
+    ptr = & d->hchain;
   }
   *exists = 0;
   d = allocate ( sizeof (DState) );
@@ -232,7 +234,7 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
         }
         else if (c == NFAACC) {
           RGXMATCH (d) = 1;
-          token = state_token (nfa[m]);
+          token = state_token ( nfa[m] );
           if (token < d->token)     /* assumes itoken in decr order */
             d->token = token; 
         }
@@ -295,11 +297,10 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   STACK(P); if(count2) PUSH (P, Q_F); PUSH (P, F); /* P <- {F, Q\F} */
   STACK(W); PUSH (W, F);                           /* W <- {F}      */
   BSTACK (X); BSTACK (Y1); BSTACK (Y2);
-  char alphabets[] = "abcqd01"; /* fixme : use [0,256)*/
   while (W->len) {                                 /* while |W| > 0 */
     uint64_t * A = POP (W);                        /* A <- POP (W)  */
-    int j = 0, c;
-    while ( (c = (int) alphabets[j++]) != '\0') {  /* each c in Σ   */
+    int c = nclass;
+    while ( c-- ) {                          /* each c in [0, P(Σ)) */
       BITCLEAR (X, qsize);
       int k = 0;
       for (int i=0; i<nq; ++i) {
@@ -367,6 +368,7 @@ int rgx_list_dfa ( Stack * list, DState ** dfa ) {
   State * nfa = allocate ( sizeof (State) ),
     ** out = allocate ( (nr+1) * sizeof (State *) );
   nfa_reset (list);
+  class_get ( &class, &nclass );
   char ** rgx = (char **) list->stack;
   for (int i=0; i<nr; ++i) {
     /*
@@ -403,11 +405,10 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
   int c;
   if (RGXMATCH (d))  end = txt;
   while ( (c = 0xFF & *txt++) ) {
-    if ( d->next[c] == NULL )
+    if ( (d = d->next[class[c]]) == NULL )
       break;
-    d = d->next[c];
-    if (RGXMATCH (d))  end = txt;
+    if (RGXMATCH (d)) end = txt;
   }
   /* return val = number of chars that match rgx + 1 */
-  return end ? (int) ( end - start + 1) : 0;
+  return end ? (int) (end - start + 1) : 0;
 }

@@ -49,7 +49,8 @@
 
   /*
   .. Lower level or internal api. Maybe used for debug
-  .. (a) creates and NFA
+  .. (a) creates and NFA. Warning : Should use after nfa_reset() or
+  ..      expect a segfault.
   .. (b) see if "txt" matches regex "rgx" using the nfa created
   .. (c) Evaluate minimised DFA in  dfa[0] for a list of regular 
   ..      expressions "rgx_list".

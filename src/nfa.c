@@ -81,7 +81,7 @@ void nfa_reset ( char ** rgx, int nr ) {
           break;
         case ']' : case '>' :
           if (nq)
-            group [ng++] = c;
+            group [ng++] = queue[--nq];
           ERRB (nq);
           class_refine (group, ng);  /* refine for character class */
           charclass = 0;

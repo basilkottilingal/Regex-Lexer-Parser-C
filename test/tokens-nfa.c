@@ -11,7 +11,7 @@
 #include "stack.h"
 
 int main () {
-  char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "(a|b)+0", "bc[a-z]+" };
+  char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
   const char txt[] = "aaccbqaabbaba01bcccd";
   char buff[60];
   printf ("Regex group ");

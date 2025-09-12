@@ -83,13 +83,16 @@ void nfa_reset ( char ** rgx, int nr ) {
           if (nq)
             group [ng++] = queue[--nq];
           ERRB (nq);
-          class_refine (group, ng);  /* refine for character class */
+          class_refine (group, ng);   /* refine for character class */
           charclass = 0;
           break;
-        case 'd' : case 'w' : case 's' :
-        case 'D' : case 'W' : case 'S' :
         case '.' :
-          ERRB (1); //fixme : implement
+          csingle ['\n'] = 1;  /* single char equivalence for '\n' */
+          break;
+        case 'd' : case 'D' :
+        case 'w' : case 'W' :
+        case 's' : case 'S' :
+          ERRB (1);                     /* fixme : not implemented */ 
       }
     }
     ERRB (err);
@@ -226,7 +229,6 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
         case '^' : case '$' : case '{' :
-        case '.' :
           /* Not yet implemented */
           return RGXERR;
         case ';' :
@@ -268,8 +270,8 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           if (nq) GROUP (UNQUEUE ());
           if (nq) return RGXERR;
           charclass = 0;
-          Fragment f = state_class (classes, (op == '>') ? 0 : 1 ); 
-          PUSH (f.state, f.out);
+          e = state_class (classes, (op == '>') ? 0 : 1 ); 
+          PUSH (e.state, e.out);
           break;
         case ',' :
           while (nq) 
@@ -280,6 +282,12 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           int b = UNQUEUE (), a = UNQUEUE ();
           for (int k=a; k<=b; ++k)
             GROUP ( k );
+          break;
+        case '.' :
+          memset (classes, 0, nclass * sizeof (int));
+          classes [class ['\n']] = 1;  /* any character except '\n' */
+          e = state_class (classes, 0); 
+          PUSH (e.state, e.out);
           break;
         default:
           /* Unknown */

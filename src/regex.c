@@ -14,6 +14,7 @@
 .. ----------------|--------------
 .. Grouping        |  (), [], [^]
 .. Unary operators |  x*, x?, x+, x{n}, x{n,m}
+..  (quantifiers)  |
 .. Concatenation   |      x;y
 .. Union           |      x|y
 .. ----------------|--------------

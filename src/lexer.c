@@ -6,10 +6,12 @@
 #include "stack.h"
 #include "allocator.h"
 #include "regex.h"
+#include "lexer.h"
+#include "class.h"
 
 /*
 .. Naive way to look for the regex pattern at the beginning of the
-.. line. The regex whill be stored in "buff".
+.. line. The regex will be stored in "buff".
 */
 static
 int read_rgx (FILE * fp, char * buff, size_t lim) {
@@ -61,6 +63,11 @@ int read_rgx (FILE * fp, char * buff, size_t lim) {
   return RGXERR;
 }
 
+/*
+.. Naive way to read action. The action should be put inside a '{' '}'
+.. block and the starting '{' should be placed in the same line of
+.. the regex pattern
+*/
 static
 int read_action (FILE * fp, char * buff, size_t lim, int * line) {
   /* fixme : remove the limit. use realloc() to handle large buffer */
@@ -142,13 +149,12 @@ int read_action (FILE * fp, char * buff, size_t lim, int * line) {
   return 0;
 }
 
-int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
+/*
+.. Read regex pattern, action pair from "in"
+*/
+static
+int lxr_grammar ( FILE * in, Stack * rgxs, Stack * actions ) {
 
-  FILE * fp = fopen (file, "r");
-  if(!fp) {
-    error ("lxr grammar : cannot open file: %s", file);
-    return RGXERR;
-  }
   stack_reset (rgxs);
   stack_reset (actions);
 
@@ -157,7 +163,7 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
 
   for (;;) {
     /* Read rgx pattern */
-    status = read_rgx (fp, rgx, sizeof (rgx));
+    status = read_rgx (in, rgx, sizeof (rgx));
     if (!status)
       stack_push ( rgxs, allocate_str (rgx) );
     else if ( status == EOF )
@@ -168,27 +174,26 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
     }
     else if ( status == RGXERR ) {
       error ("lxr grammar : reading rgx failed."
-        "File %s, Line %d", file, line);
-      fclose (fp);
+        "Line %d", line);
+      fclose (in);
       return RGXERR;
     }
     #undef EMPTY
 
     /* Read the action for the above regex pattern */
-    status = read_action (fp, action, sizeof (action), &line);
+    status = read_action (in, action, sizeof (action), &line);
     if (status == RGXERR ) {
       error ("lxr grammar : reading action failed."
-        "File %s, Line %d", file, line);
-      fclose (fp);
+        "Line %d", line);
+      fclose (in);
       return RGXERR;
     }
     stack_push ( actions, allocate_str (action) );
   }
 
-  fclose (fp);
   if (rgxs->len == 0) {
     error ("lxr grammar : Cannot find any rgx-action pair."
-        "File %s, Line %d", file, line);
+        "Line %d", line);
     return RGXERR;
   }
   return 0;
@@ -199,16 +204,11 @@ int lxr_grammar ( const char * file, Stack * rgxs, Stack * actions ) {
 .. create a new source generator, that contains lxr() function
 .. which can be used to tokenize a source file.
 */
-int lxr_generator (const char * grammar, const char * output ){
+int lxr_generate (FILE * in, FILE * out) {
 
-  FILE * fp = output ? fopen (output, "w") : stdout;
-  if ( !grammar || !fp ) {
-    error ("lxr generator : aborted");
-    return RGXERR;
-  }
-
-  Stack * r = stack_new (0), * a = stack_new (0);
-  if (lxr_grammar (grammar, r, a)) {
+  Stack * r = stack_new (64 * sizeof (void *)),
+    * a = stack_new (64 * sizeof (void *));
+  if (lxr_grammar (in, r, a)) {
     error ("lxr generator : reading grammar failed");
     return RGXERR;
   }
@@ -221,29 +221,43 @@ int lxr_generator (const char * grammar, const char * output ){
     return RGXERR;
   }
 
-  fprintf (stdout, "\n static int lxr_table [] ");
-  fprintf (stdout, "\n static int lxr_next [] ");
-  fprintf (stdout, "\n static int lxr_accept [] ");
+  int * class, nclass;
+  class_get (&class, &nclass);
+  char * names [] = {
+    "class", "next", "accept", "base" };
+  int * table [] = { 
+    class /* fixme : */ };
+  int len [] = { 256 };
+  
+  for (int i=0; i<1/* fixme */; i++) {
+    fprintf (out, "\nstatic int lxr_%s [] = {\n", names [i]);
+    for (int j=0; j<len[i]; ++j) {
+      fprintf (out, "  %3d", table [i][j]);
+      if (j%10 == 0) 
+        fprintf (out, "\n");
+    }
+    fprintf (out, "\n};");
+  }
 
-  fprintf (stdout, "\n  while ( (c = lxr_input) != EOF ) { "
+  /*
+  fprintf (out, "\n  while ( (c = lxr_input) != EOF ) { "
     "\n    if (accept) {"
     "\n      last = lxr_accept [ ]"
     "\n    }");
+  */
 
   int n = a->len / sizeof (void *);
   char ** action = (char **) a->stack;
   for (int i=0; i<n; ++i) {
-    fprintf (stdout, "\n  case %d :"
+    fprintf (out, "\n  case %d :"
       "\n    %s"
       "\n    break;",
       i, action [i]);
   }
-  fprintf (stdout, "\n  default : "
+  fprintf (out, "\n  default : "
     "\n    fprintf (stderr, \"lxr aborted\");"
     "\n    fflush (stderr); "
     "\n    exit (EXIT_FAILURE);" );
-
-  if (output) fclose (fp);
 
   return 0;
 }

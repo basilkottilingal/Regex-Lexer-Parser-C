@@ -3,9 +3,9 @@ CFLAGS = -Iinclude -Wall
 C99    = -std=c99 -pedantic
 
 RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c src/bits.c src/error.c src/class.c
-LXR    = src/lexer/lexer.c
+LXR    = src/lexer.c
 OBJ    = $(patsubst src/%.c, obj/%.o, $(RGX))
-LOBJ   = $(patsubst src/lexer/%.c, obj/%.o, $(LXR))
+LOBJ   = $(patsubst src/%.c, obj/%.o, $(LXR))
 TST    = test/nfa.c test/dfa.c test/bits.c test/tokens-nfa.c test/min-dfa.c test/hopcroft.c test/stack.c
 RUN    = $(patsubst test/%.c, obj/%.tst, $(TST))
 
@@ -25,7 +25,7 @@ obj/%.o: src/%.c include/regex.h
 obj/rgx.a: $(OBJ) Makefile
 	ar -cr $@ $(OBJ)
 
-obj/lexer.o: src/lexer/lexer.c include/regex.h include/lexer.h
+obj/lexer.o: src/lexer.c include/regex.h include/lexer.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 obj/lxr.a: $(OBJ) $(LOBJ) Makefile

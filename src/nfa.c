@@ -127,9 +127,42 @@ static State * state ( int id, State * a, State * b ) {
   s->ist = nfa_counter++;
   int nout = (a == NULL) ? 1 : 3;
   s->out = allocate ( nout * sizeof (State *) );
-  s->out[0] = a;
-  if (a) s->out[1] = b;
+  if (a) {
+    s->out[0] = a;
+    s->out[1] = b;
+  }
   return s;
+}
+
+static Fragment state_class ( int * classes, int cmp ) {
+  int stack [256], n = 0;
+  for (int i=0; i<nclass; ++i)
+    if (classes[i] == cmp)
+      stack [n++] = i;
+  State * sptr = allocate ((n+1) * sizeof (State)), *s = sptr;
+  State ** outptr = allocate ((2*n+1) * sizeof (State *)),
+    ** out = outptr;
+  
+  Dangling * d = (Dangling *) outptr;
+ 
+  for (int i=0; i<n; ++i, ++s, ++out, d++) {
+    s->out = out;
+    s->ist = nfa_counter++;
+    s->id = stack[i];
+    out [n] = s;
+    d->next = d+1;          /* append all the dangling out pointers */
+  }
+  d[-1].next = NULL;
+
+  /*
+  .. Put all the possible class transitions as output(s) of an ε-NFA
+  */
+  s->ist = nfa_counter++;
+  s->id  = NFAEPS;
+  s->out = out;
+  out [n] = NULL;
+
+  return (Fragment) {s, (Dangling *) outptr};
 }
 
 struct fState {
@@ -180,17 +213,16 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
                             else return RGXOOM
   #define  QUEUE(_c_)       if (nq == 4) return RGXOOM;              \
                             queue[nq++] = _c_
-  #define  UNQUEUE(_c_)     ( nq ? queue[--nq] : EOF )
-  #define  GROUP(_c_)                                                \
-     ( nchar < 256 ? (charstack[nchar++] =  _c_) : RGXOOM )
+  #define  UNQUEUE(_c_)     queue[--nq]
+  #define  GROUP(_c_)       classes [class[_c_]] = 1
 
   int nnfa = nfa_counter;
-  int n = 0, op, charclass = 0, charstack [256], nchar, queue [4], nq;
+  int n = 0, op, charclass = 0, classes [256], queue [4], nq;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;
   while ( ( op = *rpn++ ) >= 0 ) {
     if (ISRGXOP (op)) {
-      switch (op & 255) {
+      switch ( (op &= 255) ) {
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
         case '^' : case '$' : case '{' :
@@ -228,26 +260,26 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
         case '[' :
         case '<' :
           charclass = 1;
-          nq = nchar = 0;
+          memset (classes, 0, nclass * sizeof (int));
+          nq = 0;
           break;
+        case '>' :
         case ']' :
-          if (nq) { GROUP (UNQUEUE ()); }
+          if (nq) GROUP (UNQUEUE ());
           if (nq) return RGXERR;
           charclass = 0;
+          Fragment f = state_class (classes, (op == '>') ? 0 : 1 ); 
+          PUSH (f.state, f.out);
           break;
-        //case '>' :
-        //  break;
         case ',' :
-          while (nq) {
+          while (nq) 
             GROUP ( UNQUEUE () );
-          }
           break;
         case '-' :
           if ( nq < 2 ) return RGXERR;
           int b = UNQUEUE (), a = UNQUEUE ();
-          for (int k=a; k<=b; ++k) {
+          for (int k=a; k<=b; ++k)
             GROUP ( k );
-          }
           break;
         default:
           /* Unknown */
@@ -264,11 +296,13 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
       PUSH ( s, (Dangling *) (s->out) );
     }
   }
-  POP(e);
-  if (n) {
-    error ("rpn nfa : wrong rpn");
+
+  if ( op < EOF || n != 1 ) {
+    error ("rpn nfa : wrong regex pattern ");
     return RGXERR;
   }
+
+  POP(e);
   concatenate ( e.out, fstate (itoken) );
   *start = e.state;
   return nfa_counter - nnfa;           /* Return num of nfa created */

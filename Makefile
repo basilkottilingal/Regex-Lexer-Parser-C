@@ -6,7 +6,7 @@ RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c
 LXR    = src/lexer.c
 OBJ    = $(patsubst src/%.c, obj/%.o, $(RGX))
 LOBJ   = $(patsubst src/%.c, obj/%.o, $(LXR))
-TST    = test/nfa.c test/dfa.c test/bits.c test/tokens-nfa.c test/min-dfa.c test/hopcroft.c test/stack.c
+TST    = test/nfa.c test/dfa.c test/bits.c test/tokens-nfa.c test/min-dfa.c test/hopcroft.c test/stack.c test/class.c test/charclass.c test/json.c
 RUN    = $(patsubst test/%.c, obj/%.tst, $(TST))
 
 $(RUN) $(OBJ): | obj
@@ -52,6 +52,7 @@ all: obj/rgx.a
 	$(MAKE) obj/bits.tst
 	$(MAKE) obj/class.tst
 	$(MAKE) obj/charclass.tst
+	$(MAKE) obj/json.tst
 	$(MAKE) obj/min-dfa.tst
 	$(MAKE) obj/hopcroft.tst
 	$(MAKE) obj/tokens-nfa.tst

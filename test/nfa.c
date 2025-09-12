@@ -10,8 +10,7 @@
 #include "nfa.h"
 
 int main () {
-  //char * rgx[] = { "(aa|b)|(a(a|b))|(bc*)|(bc+)|(1?)|((a|b)+0)" };
-  char * rgx[] = { "aa|b", "a(a|b)", "bc*", "bc+", "1?", "(a|b)+0" };
+  char * rgx[] = { "aa|b", "a[^c]+", "bc*", "bc+", "(a|b)+0", "bc[a-z]+" };
 
   int nrgx = sizeof (rgx) / sizeof (rgx[0]);
   nfa_reset (rgx, nrgx);

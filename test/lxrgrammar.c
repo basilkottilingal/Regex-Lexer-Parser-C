@@ -7,13 +7,18 @@
 #include "stack.h"
 
 int main () {
-  Stack * R = stack_new (0), * A = stack_new (0);
-  if (lxr_grammar ( "../languages/basic/lexer.txt", R, A))
-    errors (); /* Flush errors, if any */
 
-  char ** rgx = (char **) R->stack, ** action = (char **) A->stack;
-  for(int i=0; i<R->len/sizeof (void *); ++i)
-    printf ("\n%s %s", rgx[i], action[i]);
+  FILE * fp = fopen ("../languages/basic/lexer.txt", "r");
+  if(!fp) {
+    error ("lxr grammar : cannot open file");
+    return RGXERR;
+  }
+
+  if (lxr_generate (fp, stdout)){
+    errors();
+  }
+
+  fclose (fp);
 
   return 0;
 }

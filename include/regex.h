@@ -46,6 +46,7 @@
   int  rgx_dfa_match ( DState * dfa,     const char * txt);
   void rgx_free      ( );
   void errors        ( );
+  int  dfa_tables    ( int ***, int ** );
 
   /*
   .. Lower level or internal api. Maybe used for debug

@@ -42,10 +42,10 @@ static int charclass = 0;
 
 /*
 .. We break down the regex to tokens of
-.. (a) literals in [0, 0xFF) (normal ascii literals, escaped
+.. (a) literals in [0, 0xFF] (normal ascii literals, escaped
 .. literals, unicode literals starting with \u, hex starting with \x).
 .. Note that, unicode literal > 0xFF has to be split to multiple
-.. literals each in [0, 0xFF) and appended one after the other.
+.. literals each in [0, 0xFF] and appended one after the other.
 .. (b) operators in regex : ^{}()[]<>?+*$;,-
 .. Some of those operators are defined and used temporarily to
 .. identify some operations. Ex: ';' is used for appending.

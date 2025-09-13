@@ -199,6 +199,14 @@ int lxr_grammar ( FILE * in, Stack * rgxs, Stack * actions ) {
   return 0;
 }
 
+static int * class;
+static int * base;
+static int * check;
+static int * next;
+
+static int compression () {
+}
+
 /*
 .. This is the main function, that read a lexer grammar and
 .. create a new source generator, that contains lxr() function
@@ -232,7 +240,7 @@ int lxr_generate (FILE * in, FILE * out) {
   for (int i=0; i<1/* fixme */; i++) {
     fprintf (out, "\nstatic int lxr_%s [] = {\n", names [i]);
     for (int j=0; j<len[i]; ++j) {
-      fprintf (out, "  %3d", table [i][j]);
+      fprintf (out, " %3d", table [i][j]);
       if (j%10 == 0) 
         fprintf (out, "\n");
     }

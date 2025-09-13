@@ -114,7 +114,7 @@ void deallocate ( void * m, size_t olds ) {
 
 void * reallocate ( void * m, size_t olds, size_t s ) {
   if ( olds >= s ) {
-    memset ( (uint8_t *)m + s, 0, olds - s);
+    //memset ( (uint8_t *)m + s, 0, olds - s);
     return m;                                      /* Not expanding */
   }
   void * t = allocate (s);              /* New, larger memory chunk */

@@ -248,8 +248,8 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
     stack_free (cache); d->list = NULL;
   }
 
-  states = (DState **) P->stack;
-  nstates = P->len / sizeof (void *);
+  states = p;
+  nstates = np;
   return 1;
 }
 
@@ -447,69 +447,68 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 */
 
 int dfa_tables (int *** tables, int ** tsize) {
+  #define EMPTY -1
 
   int ** t = * tables = allocate ( 5 * sizeof (int *) );
   int * len = * tsize = allocate ( 5 * sizeof (int) );
 
   int m = nstates, n = nclass,
     k0 = 4 * n;       /* let's start with 4n & reallocate if needed */
-  k0 = 1 << ( 63 - __builtin_clzll ( (unsigned long long) (k0-1) ) );
-  int k = k0;
+  k0 = 1 << (64 - __builtin_clzll ((unsigned long long)(k0 - 1)) );
+  int k = k0, stack [257];
 
-  len [2] = len [3] = m; len [5] = n;
+  len [0] = len [1] = k, len [2] = len [3] = m, len [4] = 256;
 
-  int * check = t[0] = allocate ( k * sizeof (int));
-  int * next = t[1] = allocate ( k * sizeof (int));
-  int * base = t[2] = allocate ( m * sizeof (int));
-  int * accept = t[3] = allocate ( m * sizeof (int));
+  for (int i=0; i<4; ++i)
+    t[i] = allocate (len[i] * sizeof (int));
   t[4] = class;
+
+  int * check = t[0], * next = t[1],
+    * base = t[2], * accept = t[3];
 
   /*
   .. fixme : sort states by decreasing density of transition vector
   */
 
-  #define EMPTY -1
   memset ( check, EMPTY, k * sizeof (int) );
 
   int offset = 0;
-  for (int q=0; q<m; ++q) {
-    DState * s = states [q];
+  for (int s=0; s<m; ++s) {
 
-    int can_place = 0;
-    while (!can_place) {
-      can_place = 1;
-      for (int c = 0; c <= n; ++c) 
-        if (s->next [c] && check [offset+c] != EMPTY ) {
-          can_place = 0;
-          offset ++;                /* cannot place, if a collision */
-          break;
-        }
-    }
-
-    accept [q] = s->token;
-    base [q] = offset;
-    for (int c = 0; c <= n; ++c)
-      if (s->next [c]) {
-        next [offset + c] = s->next[c]->i;
-        check [offset + c] = q; 
-      }
-break;
-/*
-    offset += n;
-    if (q == m-1) break;
-
-*/
-
-    if (offset + 2*n > k) {    /* resize next[] and check[] if reqd */
+    if (offset + 2*n > k) {        /* resize next and check if reqd */
       check = reallocate (check, k* sizeof(int), (k+k0)* sizeof(int));
       next = reallocate (next, k* sizeof(int), (k+k0)* sizeof(int));
       memset (& check [k], EMPTY, (k+k0)* sizeof (int));
       k += k0;
     }
+
+    DState * q = states [s], ** d = q->next;
+    
+    int * ptr = stack, c;
+    for (c=0; c<n; ++c)                            /* each eq class */
+      if ( d[c] )       /* stack transitions excepts DEAD transition*/
+        *ptr++ = c;
+    if(ptr == stack) continue;
+    *ptr = EMPTY;
+ 
+    ptr = stack;
+    while ( (c=*ptr++) != EMPTY ) 
+      if ( check [offset + c] != EMPTY ) {            /* collision. */
+        ptr = stack;
+        offset ++;                    /* restart, with a new offset */
+      }
+
+    ptr = stack;
+    while ( (c=*ptr++) != EMPTY ) {
+      next [offset + c] = d[c]->i;
+      check [offset + c] = s;                         /* insert row */
+    }
+    accept [s] = RGXMATCH (q) ? q->token : 0;
+    base [s] = offset;
   }
 
   len [0] = len [1] = offset + n;
-  #undef EMPTY
 
   return 0;
+  #undef EMPTY
 }

@@ -51,11 +51,11 @@ void nfa_reset ( char ** rgx, int nr ) {
 
   /*
   .. Creating equivalence classes that accomodate all literals & also
-  .. character class groups in the list of rgx []. We traverse each of
-  .. the regex and identify literals and for each group [] and [^] the
-  .. partition P(Σ) is refined using class_refine (), and all the
-  .. single standing literals are taken care at the end using
-  .. class_char ().
+  .. character class groups in each  pattern rgx[i]. We traverse
+  .. through each of the regex and identify literals and for each
+  .. group [] and [^] the partition P(Σ) is refined using
+  .. class_refine (), and all the single standing literals are taken
+  .. care at the end using class_char ().
   */
   class_init ();
 
@@ -159,6 +159,10 @@ static Fragment state_class ( int * classes, int cmp ) {
   for (int i=0; i<nclass; ++i)
     if (classes[i] == cmp)
       stack [n++] = i;
+
+  if (!n) 
+    return (Fragment) {NULL, NULL};
+
   State * sptr = allocate ((n+1) * sizeof (State)), *s = sptr;
   State ** outptr = allocate ((2*n+1) * sizeof (State *)),
     ** out = outptr;
@@ -300,7 +304,9 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           if (nq) GROUP (UNQUEUE ());
           if (nq) return RGXERR;
           charclass = 0;
-          e = state_class (classes, (op == '>') ? 0 : 1 ); 
+          e = state_class (classes, (op == '>') ? 0 : 1 );
+          if (e.state == NULL)          /* Empty character class [] */
+            return RGXERR;
           PUSH (e.state, e.out);
           break;
         case ',' :
@@ -320,8 +326,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           PUSH (e.state, e.out);
           break;
         default:
-          /* Unknown */
-          error ("rgx nfa : unimplemented rule");
+          error ("rgx nfa : unimplemented rule");        /* Unknown */
           return RGXERR;
       }
     }

@@ -12,8 +12,8 @@
 int main () {
   char * rgx[] = { 
     "true", "false", "null", 
-    /*"[ \\t\\v\\n\\f]+",*/ "\\[", "\\]", ":", ",", "\\{", "\\}", 
-    "-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)", 
+    "[ \\t\\v\\n\\f\\r]+", "\\[", "\\]", ":", ",", "\\{", "\\}", 
+    "-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?", 
     "\"([^\"\\\\]|\\\\[\"\\/bfnrt])*\"" /* fixme : allow unicode */
   };
 
@@ -26,6 +26,7 @@ int main () {
   if (status < 0) {
     errors ();
     printf ("cannot make DFA. aborting");
+    fflush (stdout);
     exit (-1);
   }
 
@@ -71,9 +72,17 @@ int main () {
     else if (m > 0) {
       m -= 1; buff[m] = '\0';
       if(m) memcpy (buff, source, m);
-      printf ("\n%s", buff);
+      printf ("%s", buff);
+      source += m < 1 ? 1 : m;
     }
-    source += m < 1 ? 1 : m;
+    else {
+      /*
+      .. There should be neither a  zero length tokens, nor
+      .. an unknown token
+      */
+      printf ("\nLexer Error [%d]", *source);
+      source ++;
+    }
   } while (*source);
 
   /* free all memory blocks created */

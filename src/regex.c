@@ -221,7 +221,7 @@ int rgx_rpn ( char * s, int * rpn ) {
     queue = STACK (queued, 4);
   while ((op = queue.n ? queue.a[--queue.n] : rgx_token (rgx)) >= 0){
     if ( ISRGXOP (op) ) {
-      switch ( op & 255 ) {
+      switch ( op & 0xFF ) {
         /*
         .. Character groups . Not yet implemented
         */

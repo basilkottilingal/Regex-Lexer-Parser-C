@@ -16,7 +16,7 @@ typedef struct Block {
   char * head;
 } Block ;
 
-static Block  * blockhead = NULL; 
+static Block  * blockhead = NULL;
 static void  ** bins      = NULL;
 static unsigned bits      = 0;
 
@@ -39,7 +39,7 @@ static Block * block_new ( void ) {
   };
   if (!bins) {
     bins = (void **) block->head;
-    size_t binsize = 16* sizeof (void *); 
+    size_t binsize = 16* sizeof (void *);
     block->head += binsize;
     block->size -= binsize;
     memset (bins, 0, binsize);
@@ -89,7 +89,7 @@ char * allocate_str ( const char * s ) {
 
 static inline int floorlog2 ( ULL k ) {
   /* ⌊ log2 (k) ⌋ */
-  return ULL_BITS - __builtin_clz (k);          
+  return ULL_BITS - __builtin_clz (k);
 }
 
 static inline int ceillog2 ( ULL k ) {
@@ -99,7 +99,7 @@ static inline int ceillog2 ( ULL k ) {
 
 typedef struct Chunk {
   struct Chunk *next;
-  size_t len;  
+  size_t len;
 } Chunk;
 
 #undef ULL

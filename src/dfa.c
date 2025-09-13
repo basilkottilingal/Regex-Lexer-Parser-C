@@ -25,8 +25,8 @@ typedef struct DState {
   uint32_t hash;
 } Dstate;
 
+static DState ** states = NULL;               /* list of dfa states */
 static int       nstates = 0;              /* Number of Dfa states. */
-
 static DState ** htable  = NULL;                /* Uses a hashtable */
 static int       hsize;                /* fixme : use prime numbers */
 static int       stacksize;    /* bit stack size rounded to 8 bytes */
@@ -85,8 +85,7 @@ static DState * dfa_root ( State * nfa, int nnfa ) {
 .. ...................................................................
 .. ........  Algorithms related to DFA minimisation  .................
 .. ...................................................................
-.. ...................................................................
-*/
+.. .................................................................*/
 
 /*
 .. Traverse through the DFA tree starting from "root".
@@ -95,9 +94,9 @@ static DState * dfa_root ( State * nfa, int nnfa ) {
 .. NFA Cache.
 */
 static int
-rgx_dfa_tree ( DState * root, Stack ** states ) {
+rgx_dfa_tree ( DState * root, Stack ** Qptr ) {
   #define RTN(r)  stack_free (list); stack_free (bits);              \
-    if (r<0) stack_free (Q); else *states = Q;                       \
+    if (r<0) stack_free (Q); else *Qptr = Q;                         \
     return r
 
   DState * dfa;
@@ -125,15 +124,15 @@ rgx_dfa_tree ( DState * root, Stack ** states ) {
       dfa = stack[n-1].d;
       c = s->id;
       if (c >= 256 || dfa->next[c] ) continue;
-        
+
       if (states_transition (dfa->list, list, buff, c) < 0) {
           RTN (RGXERR);
       }
       dfa->next[c] = state (list, bits, &exists);
-      if (!exists) {   /* 'dfa' was recently pushed to hash table */
+      if (!exists) {     /* 'dfa' was recently pushed to hash table */
         dfa = dfa->next[c];
         if (n == RGXSIZE) { RTN (RGXOOM); }
-        stack[n++] = (struct tree) { /* PUSH() & go down the tree */
+        stack[n++] = (struct tree) {   /* PUSH() & go down the tree */
           dfa, (State **) dfa->list->stack,
           dfa->list->len / sizeof (void *)
         };
@@ -141,12 +140,13 @@ rgx_dfa_tree ( DState * root, Stack ** states ) {
     }
 
     do {
-      dfa = stack[--n].d;  /* Pop a dfa from stack, add the dfa to Q*/
+      dfa = stack[--n].d; /* Pop a dfa from stack, add the dfa to Q */
       dfa->i = state_id++;
       stack_push (Q, dfa);                     /* Set of all states */
     } while ( n && !stack[n-1].n );
   }
 
+  states = (DState **) Q->stack;
   RTN (0);
 
   #undef RTN
@@ -189,7 +189,7 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
       i64 = Y[k];
       while (i64) {
         bit = __builtin_ctzll(i64);       /* position of lowest bit */
-          
+
         child = q [bit|base];
         if (child->i == nq-1)     /* root dfa is the TOP of Q stack */
           _q0 = d;                   /* root of the new DFA tree Q' */
@@ -240,7 +240,7 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
           RGXMATCH (d) = 1;
           token = state_token ( nfa[m] );
           if (token < d->token)     /* assumes itoken in decr order */
-            d->token = token; 
+            d->token = token;
         }
       }
       stack_free (s[n]->list); s[n]->list = NULL;
@@ -248,11 +248,13 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
     stack_free (cache); d->list = NULL;
   }
 
+  states = (DState **) P->stack;
+  nstates = P->len / sizeof (void *);
   return 1;
 }
 
 /*
-.. Given an "old" DFA, it returns minimized DFA (*dfa)
+.. Given a "root" NFA, it returns minimized DFA (*dfa)
 */
 
 static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
@@ -377,7 +379,7 @@ int rgx_list_dfa ( char ** rgx, int nr, DState ** dfa ) {
     /*
     .. Note that the token number itoken = 0, is reserved for error
     */
-    n = rgx_nfa (rgx[i], &out[i], i+1 ); 
+    n = rgx_nfa (rgx[i], &out[i], i+1 );
     if ( n < 0 ) {
       error ("rgx list nfa : cannot create nfa for rgx \"%s\"", rgx);
       return RGXERR;
@@ -389,7 +391,7 @@ int rgx_list_dfa ( char ** rgx, int nr, DState ** dfa ) {
     .ist = nt++,
     .out = out
   };
-  
+
   return hopcroft (nfa, dfa, nt);
 }
 
@@ -409,4 +411,105 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
   }
   /* return val = number of chars that match rgx + 1 */
   return end ? (int) (end - start + 1) : 0;
+}
+
+/* ...................................................................
+.. ...................................................................
+.. ........  Algorithms related to table compression .................
+.. ...................................................................
+.. .................................................................*/
+
+/*
+.. The transition mapping δ (q, c) is a matrix of size m⋅n where 
+.. m = |P(Q)|, and n = |P(Σ)| are the size of minimized dfa set and
+.. equivalence class. Expecting demanding scenarios, like a C lexer
+.. where m ~ 512 and n ~ 64 (just rounded off. Exact numbers depends
+.. on which ANSI C version you are using, etc ), you might need a 2D
+.. table size of few MBs and traversing through such a large table
+.. for every byte input is a bad idea. In scenarios like a C lexer,
+.. where this table is very sparse (δ (q, c) gives a "dead" state),
+.. you have a scope of compacting this 2D table into 3 linear
+.. tables "check[]", "next[]" and "base[]" as mentioned in many
+.. literature and also in codes like flex.
+..
+.. Along with equivalence class table "class[]" and token info table
+.. "accept[]" which stores the most preferred token number for an
+.. accepting state, and 0 (DEAD) for a non-accpeting state.
+.. |check| = |next| = k, where you minimize k.
+.. |accept| = |base| = m
+..
+.. Transition looks like
+..   s <- next [base [s] + class [c]], if check[s] == s
+..
+.. Size of check[], k, is guaranteed to be in the range [n, m⋅n] but
+.. finding the minimal solution is an NP-hard problem and thus rely
+.. on optimal solution solved heuristically.
+*/
+
+int dfa_tables (int *** tables, int ** tsize) {
+
+  int ** t = * tables = allocate ( 5 * sizeof (int *) );
+  int * len = * tsize = allocate ( 5 * sizeof (int) );
+
+  int m = nstates, n = nclass,
+    k0 = 4 * n;       /* let's start with 4n & reallocate if needed */
+  k0 = 1 << ( 63 - __builtin_clzll ( (unsigned long long) (k0-1) ) );
+  int k = k0;
+
+  len [2] = len [3] = m; len [5] = n;
+
+  int * check = t[0] = allocate ( k * sizeof (int));
+  int * next = t[1] = allocate ( k * sizeof (int));
+  int * base = t[2] = allocate ( m * sizeof (int));
+  int * accept = t[3] = allocate ( m * sizeof (int));
+  t[4] = class;
+
+  /*
+  .. fixme : sort states by decreasing density of transition vector
+  */
+
+  #define EMPTY -1
+  memset ( check, EMPTY, k * sizeof (int) );
+
+  int offset = 0;
+  for (int q=0; q<m; ++q) {
+    DState * s = states [q];
+
+    int can_place = 0;
+    while (!can_place) {
+      can_place = 1;
+      for (int c = 0; c <= n; ++c) 
+        if (s->next [c] && check [offset+c] != EMPTY ) {
+          can_place = 0;
+          offset ++;                /* cannot place, if a collision */
+          break;
+        }
+    }
+
+    accept [q] = s->token;
+    base [q] = offset;
+    for (int c = 0; c <= n; ++c)
+      if (s->next [c]) {
+        next [offset + c] = s->next[c]->i;
+        check [offset + c] = q; 
+      }
+break;
+/*
+    offset += n;
+    if (q == m-1) break;
+
+*/
+
+    if (offset + 2*n > k) {    /* resize next[] and check[] if reqd */
+      check = reallocate (check, k* sizeof(int), (k+k0)* sizeof(int));
+      next = reallocate (next, k* sizeof(int), (k+k0)* sizeof(int));
+      memset (& check [k], EMPTY, (k+k0)* sizeof (int));
+      k += k0;
+    }
+  }
+
+  len [0] = len [1] = offset + n;
+  #undef EMPTY
+
+  return 0;
 }

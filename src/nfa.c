@@ -49,6 +49,14 @@ void nfa_reset ( char ** rgx, int nr ) {
 
   #define ERRB(cond) if (cond) { err = 1; break; }
 
+  /*
+  .. Creating equivalence classes that accomodate all literals & also
+  .. character class groups in the list of rgx []. We traverse each of
+  .. the regex and identify literals and for each group [] and [^] the
+  .. partition P(Σ) is refined using class_refine (), and all the
+  .. single standing literals are taken care at the end using
+  .. class_char ().
+  */
   class_init ();
 
   for (int i=0; i<nr; ++i) {
@@ -64,7 +72,7 @@ void nfa_reset ( char ** rgx, int nr ) {
         csingle [c] = 1;           /* single char equivalence group */
         continue;
       }
-      switch ( (c &= 255) ) {
+      switch ( (c &= 0xFF) ) {
         case '[' :  case '<' :
           ng = 0, charclass = 1;
           break;
@@ -87,12 +95,12 @@ void nfa_reset ( char ** rgx, int nr ) {
           charclass = 0;
           break;
         case '.' :
-          csingle ['\n'] = 1;  /* single char equivalence for '\n' */
+          csingle ['\n'] = 1;   /* single char equivalence for '\n' */
           break;
         case 'd' : case 'D' :
         case 'w' : case 'W' :
         case 's' : case 'S' :
-          ERRB (1);                     /* fixme : not implemented */ 
+          ERRB (1);                      /* fixme : not implemented */
       }
     }
     ERRB (err);
@@ -108,8 +116,8 @@ void nfa_reset ( char ** rgx, int nr ) {
   }
 
   class_get ( &class, &nclass );
+
   #if 0
-  
   char buff[] = " ";
   printf ("\n [  ");
   for (int i=0; i<256; ++i) {
@@ -124,6 +132,9 @@ void nfa_reset ( char ** rgx, int nr ) {
   #undef ERRB
 }
 
+/*
+.. create an NFA state
+*/
 static State * state ( int id, State * a, State * b ) {
   State * s = allocate ( sizeof (State) );
   s->id  = id;
@@ -137,6 +148,12 @@ static State * state ( int id, State * a, State * b ) {
   return s;
 }
 
+/*
+.. Create a fragment, say 'f', for a character class []. The state
+.. f.state is an ε-transition NFA, which is connected to all the NFAs 
+.. corresponding to each of the characters in the [] group. The "out"
+.. transitions of all these NFAs are appended and stored in f.out
+*/
 static Fragment state_class ( int * classes, int cmp ) {
   int stack [256], n = 0;
   for (int i=0; i<nclass; ++i)
@@ -168,11 +185,17 @@ static Fragment state_class ( int * classes, int cmp ) {
   return (Fragment) {s, (Dangling *) outptr};
 }
 
+/*
+.. An accepting NFA state
+*/
 struct fState {
   State s;
   int itoken;
 };
 
+/*
+.. create an accpeting nfa
+*/
 static State * fstate ( int itoken ) {
   struct fState * f = allocate ( sizeof (struct fState) );
   f->itoken = itoken;
@@ -182,6 +205,10 @@ static State * fstate ( int itoken ) {
   return s;
 }
 
+/*
+.. Get the token id in [1, tokenmax] for an accpeting state.
+.. Note : id "0" should be reserved for error/reject.
+*/
 int state_token ( State * f ) {
   assert (f->id == NFAACC);
   return ((struct fState*) f)->itoken;
@@ -205,6 +232,9 @@ static void concatenate ( Dangling * d, State * s ) {
   }
 }
 
+/*
+.. Create NFA tree for RPN corresponding to a regex pattern
+*/
 int rpn_nfa ( int * rpn, State ** start, int itoken ) {
 
   #define  STT(_f_,_a,_b)   s = state (_f_,_a,_b);                   \
@@ -225,37 +255,37 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   State * s;
   while ( ( op = *rpn++ ) >= 0 ) {
     if (ISRGXOP (op)) {
-      switch ( (op &= 255) ) {
+      switch ( (op &= 0XFF) ) {
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
         case '^' : case '$' : case '{' :
           /* Not yet implemented */
           return RGXERR;
         case ';' :
-          POP(e1); POP(e0);
+          POP (e1); POP (e0);
           concatenate ( e0.out, e1.state );
           PUSH ( e0.state, e1.out );
           break;
         case '|' :
-          POP(e1); POP(e0);
+          POP (e1); POP (e0);
           STT ( NFAEPS, e0.state, e1.state );
           append ( e0.out, e1.out );
           PUSH ( s, e0.out );
           break;
         case '+' :
-          POP(e);
+          POP (e);
           STT ( NFAEPS, e.state, NULL );
           concatenate ( e.out, s );
           PUSH ( e.state, (Dangling *) (& s->out[1]) );
           break;
         case '*' :
-          POP(e);
+          POP (e);
           STT ( NFAEPS, e.state, NULL );
           concatenate ( e.out, s );
           PUSH ( s, (Dangling *) (& s->out[1]) );
           break;
         case '?' :
-          POP(e);
+          POP (e);
           STT ( NFAEPS, e.state, NULL );
           PUSH ( s, append (e.out, (Dangling *) (& s->out[1]) ) );
           break;
@@ -310,10 +340,10 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
     return RGXERR;
   }
 
-  POP(e);
+  POP (e);
   concatenate ( e.out, fstate (itoken) );
   *start = e.state;
-  return nfa_counter - nnfa;           /* Return num of nfa created */
+  return nfa_counter - nnfa;        /* Return number of nfa created */
 
   #undef  PUSH
   #undef  POP

@@ -420,7 +420,7 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 .. .................................................................*/
 
 /*
-.. The transition mapping δ (q, c) is a matrix of size m⋅n where 
+.. The transition mapping δ (q, c) is a matrix of size m⋅n where
 .. m = |P(Q)|, and n = |P(Σ)| are the size of minimized dfa set and
 .. equivalence class. Expecting demanding scenarios, like a C lexer
 .. where m ~ 512 and n ~ 64 (just rounded off. Exact numbers depends
@@ -443,56 +443,122 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 ..
 .. Size of check[], k, is guaranteed to be in the range [n, m⋅n] but
 .. finding the minimal solution is an NP-hard problem and thus rely
-.. on optimal solution solved heuristically.
+.. on greedy heauristic algorithm.
 */
 
-int dfa_tables (int *** tables, int ** tsize) {
+typedef struct Row {
+  int s, n, start, span;
+} Row;
+
+static int compare ( const void * a, const void * b ) {
+  #define CMP(p,q) cmp = ((int) (p > q) - (int) (p < q));            \
+    if (cmp) return cmp
+  Row * s = (Row *)a, * r = (Row *)b;
+  int cmp;                  /* sort by                              */
+  CMP (r->n, s->n);         /* number of transitions (decreasing)   */
+  CMP (s->span, r->span);   /* span = end-start  (increasing)       */
+  CMP (s->start, r->start); /* first transition  (lowest preferred) */
+  CMP (s->s, r->s);         /* state id (lowest preferred)          */
+  return 0;
+  #undef CMP
+}
+
+static void resize (int ** check, int ** next, int * k, int k0){
   #define EMPTY -1
+  int sold = (*k) * sizeof (int), s = sold + k0 * sizeof(int);
+  *check = reallocate (*check, sold, s);
+  *next = reallocate (*next, sold, s);
+  memset (& (*check) [*k] + sold, EMPTY, s - sold);
+  *k += k0;
+}
+
+static Row * rows_ordered () {
+  int m = nstates, n = nclass;
+  Row * rows = allocate ( (m+1) * sizeof (Row)), * row = rows;
+  for (int s=0; s<m; ++s, ++row) {
+    int ntrans = 0, start = EMPTY, end = EMPTY;
+    DState ** d = states[s]->next;
+    for (int c = 0; c < n; ++c)
+      if (d[c]) {
+        ntrans++; end = c;
+        if (start == EMPTY) start = c;
+      }
+    *row = (Row) {
+      .n = ntrans, .span = end - start, .start = start, .s = s
+    };
+  }
+  row->s = EMPTY;
+  qsort (rows, m, sizeof (Row), compare);
+  return rows;
+}
+
+int dfa_tables (int *** tables, int ** tsize) {
 
   int ** t = * tables = allocate ( 5 * sizeof (int *) );
   int * len = * tsize = allocate ( 5 * sizeof (int) );
 
   int m = nstates, n = nclass,
-    k0 = 4 * n;       /* let's start with 4n & reallocate if needed */
+    k0 = 4 * n;     /* let's start with k=4n & reallocate if needed */
   k0 = 1 << (64 - __builtin_clzll ((unsigned long long)(k0 - 1)) );
   int k = k0, stack [257];
 
-  len [0] = len [1] = k, len [2] = len [3] = m, len [4] = 256;
-
-  for (int i=0; i<4; ++i)
-    t[i] = allocate (len[i] * sizeof (int));
-  t[4] = class;
-
-  int * check = t[0], * next = t[1],
-    * base = t[2], * accept = t[3];
-
-  /*
-  .. fixme : sort states by decreasing density of transition vector
-  */
+  int * check = allocate ( k* sizeof (int)),
+    * next = allocate (k * sizeof(int)),
+    * base = allocate (m * sizeof (int)),
+    * accept = allocate (m * sizeof (int));
 
   memset ( check, EMPTY, k * sizeof (int) );
 
-  int offset = 0;
-  for (int s=0; s<m; ++s) {
 
-    if (offset + 2*n > k) {        /* resize next and check if reqd */
-      check = reallocate (check, k* sizeof(int), (k+k0)* sizeof(int));
-      next = reallocate (next, k* sizeof(int), (k+k0)* sizeof(int));
-      memset (& check [k], EMPTY, (k+k0)* sizeof (int));
-      k += k0;
+  int offset = 0, s;
+  /* Order rows by density */
+  Row * rows = rows_ordered (), * row = rows;
+  #if 0
+  Row * _row = rows;
+  while ( (s = (*_row++).s ) != EMPTY ) {
+    printf ("\ns%2d n%2d start%2d span%2d",
+    _row[-1].s, _row[-1].n, _row[-1].start, _row[-1].span);
+  }
+  #endif
+  while ( (s = (*row++).s ) != EMPTY ) {
+
+    if (offset + 2*n > k)          /* resize next and check if reqd */
+      resize (&check, &next, &k, k0);
+
+    if (row[-1].n == 1) {
+      /*
+      .. Place all the states with single character differently.
+      .. Look for the empty slots beginning from index 0
+      */
+      int slot = 0, c;
+      do {
+        DState * q = states [s], ** d = q->next;
+        c = row[-1].start;
+        while ( check [slot] != EMPTY || slot - c < 0){
+          ++slot;
+          if (slot + n > k)
+            resize (&check, &next, &k, k0);
+        }
+        next [slot] = d[c]->i;
+        check [slot] = s;
+        accept [s] = RGXMATCH (q) ? q->token : 0;
+        base [s] = slot - c;
+      } while ( (s = (*row++).s ) != EMPTY && row[-1].n );
+      if ( ( slot = base [row[-1].s] ) > offset )
+        offset = base [s];
+      break;
     }
 
     DState * q = states [s], ** d = q->next;
-    
+
     int * ptr = stack, c;
     for (c=0; c<n; ++c)                            /* each eq class */
       if ( d[c] )       /* stack transitions excepts DEAD transition*/
         *ptr++ = c;
-    if(ptr == stack) continue;
     *ptr = EMPTY;
- 
+
     ptr = stack;
-    while ( (c=*ptr++) != EMPTY ) 
+    while ( (c=*ptr++) != EMPTY )
       if ( check [offset + c] != EMPTY ) {            /* collision. */
         ptr = stack;
         offset ++;                    /* restart, with a new offset */
@@ -507,7 +573,14 @@ int dfa_tables (int *** tables, int ** tsize) {
     base [s] = offset;
   }
 
+  deallocate (rows, (m+1)*sizeof (Row));
+
   len [0] = len [1] = offset + n;
+  len [2] = len [3] = m;
+  len [4] = 256;
+
+  t [0] = check;  t [1] = next;  t [2] = base;
+  t [3] = accept; t [4] = class;
 
   return 0;
   #undef EMPTY

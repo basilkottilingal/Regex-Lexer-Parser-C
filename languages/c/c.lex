@@ -47,6 +47,8 @@ _Noreturn                           { _TOKEN_(NORETURN); }
 _Static_assert                      { _TOKEN_(STATIC_ASSERT); }
 _Thread_local                       { _TOKEN_(THREAD_LOCAL); }
 __func__                            { _TOKEN_(FUNC_NAME); }
+
+
 [a-zA-Z_][a-zA-Z_0-9]*                             { _TOKEN_IDENTIFIER_(); }
 (0[xX])[a-fA-F0-9]+(((u|U)(l|L|ll|LL)?)|((l|L|ll|LL)(u|U)?))?   { _TOKEN_(I_CONSTANT); }
 [1-9][0-9]*(((u|U)(l|L|ll|LL)?)|((l|L|ll|LL)(u|U)?))?         { _TOKEN_(I_CONSTANT); }

@@ -74,6 +74,8 @@ static DState * dfa_root ( State * nfa, int nnfa ) {
   }
   stacksize = BITBYTES (nnfa);        /* rounded as 64 bits multiple*/
   hsize = primes[ (++n < 6 ? 6 : n) - 6 ];
+  while (hsize * sizeof (void *) > PAGE_SIZE)       /* memory limit */
+    hsize = primes[ --n - 6 ];
   htable = allocate ( hsize * sizeof (State *) );
   DState * root = state (list, bits, &exists);
   RTN (root);

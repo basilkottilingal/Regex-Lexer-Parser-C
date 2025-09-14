@@ -2,6 +2,7 @@
 #include <string.h>
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "allocator.h"
 #include "bits.h"

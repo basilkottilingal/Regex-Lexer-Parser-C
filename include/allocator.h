@@ -12,7 +12,7 @@
     #define BLOCK_SIZE (1<<15)    /* 32 kB     */
   #endif
   #ifndef PAGE_SIZE
-    #define PAGE_SIZE 4096
+    #define PAGE_SIZE 8192
   #endif
 
   /* APIs

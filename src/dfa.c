@@ -167,6 +167,7 @@ rgx_dfa_tree ( DState * root, Stack ** Qptr ) {
 
 static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
+  printf ("\n dfa minimal |p|%zd", P->len/sizeof(void *)); fflush (stdout);
   /*
   .. New dfa set Q' from P.
   .. Use same hash table. Faster than O(n.n) bit comparison
@@ -268,7 +269,7 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   DState * root = dfa_root (nfa, nnfa); if (!nfa) return RGXERR;
   if ( rgx_dfa_tree (root, &Q) < 0 || !Q )return RGXERR;
   int nq = Q->len / sizeof (void *), qsize = BITBYTES(nq);
-  printf ("\n |Q| %d ", nq);
+  printf ("\n |Q| %d ", nq); fflush (stdout);
   BSTACK(F); BSTACK(Q_F);
   DState ** q = (DState **) Q->stack, * next;
   int count1 = 0, count2 = 0;
@@ -470,8 +471,8 @@ static void resize (int ** check, int ** next, int * k, int k0){
   int sold = (*k) * sizeof (int), s = sold + k0 * sizeof(int);
   *check = reallocate (*check, sold, s);
   *next = reallocate (*next, sold, s);
-  memset (& (*check) [*k] + sold, EMPTY, s - sold);
-  *k += k0;
+  memset (& (*check) [*k], EMPTY, s - sold);
+  (*k) += k0;
 }
 
 static Row * rows_ordered () {
@@ -523,7 +524,6 @@ int dfa_tables (int *** tables, int ** tsize) {
   }
   #endif
   while ( (s = (*row++).s ) != EMPTY ) {
-
     if (offset + 2*n > k)          /* resize next and check if reqd */
       resize (&check, &next, &k, k0);
 
@@ -538,16 +538,17 @@ int dfa_tables (int *** tables, int ** tsize) {
         c = row[-1].start;
         while ( check [slot] != EMPTY || slot - c < 0){
           ++slot;
-          if (slot + n > k)
+          if (slot + n > k) {
             resize (&check, &next, &k, k0);
+          }
         }
         next [slot] = d[c]->i;
         check [slot] = s;
         accept [s] = RGXMATCH (q) ? q->token : 0;
         base [s] = slot - c;
+        if ( base [s] > offset )
+          offset = base [s];
       } while ( (s = (*row++).s ) != EMPTY && row[-1].n );
-      if ( ( slot = base [row[-1].s] ) > offset )
-        offset = base [s];
       break;
     }
 
@@ -560,11 +561,12 @@ int dfa_tables (int *** tables, int ** tsize) {
     *ptr = EMPTY;
 
     ptr = stack;
-    while ( (c=*ptr++) != EMPTY )
+    while ( (c=*ptr++) != EMPTY ) {
       if ( check [offset + c] != EMPTY ) {            /* collision. */
         ptr = stack;
         offset ++;                    /* restart, with a new offset */
       }
+    }
 
     ptr = stack;
     while ( (c=*ptr++) != EMPTY ) {

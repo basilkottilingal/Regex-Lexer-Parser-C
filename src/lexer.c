@@ -199,6 +199,26 @@ int lxr_grammar ( FILE * in, Stack * rgxs, Stack * actions ) {
   return 0;
 }
 
+
+int lxr_debug (FILE * in, DState ** dfa) {
+
+  Stack * r = stack_new (64 * sizeof (void *)),
+    * a = stack_new (64 * sizeof (void *));
+  if (lxr_grammar (in, r, a)) {
+    error ("lxr generator : reading grammar failed");
+    return RGXERR;
+  }
+
+  char ** rgx = (char **) r->stack;
+  int nrgx = r->len/sizeof (void *);
+  if (rgx_list_dfa (rgx, nrgx, dfa) < 0) {
+    error ("failed to create a minimal dfa");
+    return RGXERR;
+  }
+
+  return 0;
+}
+
 /*
 .. This is the main function, that read a lexer grammar and
 .. create a new source generator, that contains lxr() function
@@ -221,6 +241,63 @@ int lxr_generate (FILE * in, FILE * out) {
     return RGXERR;
   }
 
+  #if 0
+  const char *json = "case switch if myname 120"
+    " else if break << >> | %%"
+    "{\n"
+    "    \"widget\": {\n"
+    "        \"debug\": \"on\",\n"
+    "        \"window\": {\n"
+    "            \"title\": \"Sample Konfabulator Widget\",\n"
+    "            \"name\": \"main_window\",\n"
+    "            \"width\": 500,\n"
+    "            \"height\": 500\n"
+    "        },\n"
+    "        \"image\": { \n"
+    "            \"src\": \"Images/Sun.png\",\n"
+    "            \"name\": \"sun1\",\n"
+    "            \"hOffset\": 250,\n"
+    "            \"vOffset\": 250,\n"
+    "            \"alignment\": \"center\"\n"
+    "        },\n"
+    "        \"text\": {\n"
+    "            \"data\": \"Click Here\",\n"
+    "            \"size\": 36,\n"
+    "            \"style\": \"bold\",\n"
+    "            \"name\": \"text1\",\n"
+    "            \"hOffset\": 250,\n"
+    "            \"vOffset\": 100,\n"
+    "            \"alignment\": \"center\",\n"
+    "            \"onMouseUp\": \"sun1.opacity = (sun1.opacity / 100) * 90;\"\n"
+    "        }\n"
+    "    }\n"
+    "}\n";
+  char buff[64];
+  printf ("\nparsing json text %s\n", json);
+  const char * source = json;
+  do {
+    int m = rgx_dfa_match (dfa, source);
+    if (m < 0) {
+      printf ("internal error");
+      errors ();
+      exit (-1);
+    }
+    else if (m > 0) {
+      m -= 1; buff[m] = '\0';
+      if(m) memcpy (buff, source, m);
+      printf ("\nFound %s", buff);
+      source += m < 1 ? 1 : m;
+    }
+    else {
+      /*
+      .. There should be neither a  zero length tokens, nor
+      .. an unknown token
+      */
+      printf ("\nLexer Error [%d]", *source);
+      source ++;
+    }
+  } while (*source);
+  #endif
  
   /*
   .. print all the tables used by lexer function

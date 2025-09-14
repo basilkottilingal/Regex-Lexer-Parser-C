@@ -256,6 +256,20 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
   return 1;
 }
 
+#if 0
+void delete (Stack * P, int qsize) {
+  int _np = P->len / sizeof (void *);
+  uint64_t ** _bits = (uint64_t **) P->stack;
+  int _nbits;
+  printf ("\n{ ");
+  for(int i=0; i<_np;++i) {
+    BITCOUNT(_bits[i], _nbits, qsize); 
+    printf ("%d, ", _nbits);
+  }
+  printf ("}");
+}
+#endif
+
 /*
 .. Given a "root" NFA, it returns minimized DFA (*dfa)
 */
@@ -345,6 +359,9 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
         /*FREE ( Y );*/
       }
     }
+  #if 0
+  delete (P, qsize);
+  #endif
   }
 
   /*
@@ -548,7 +565,17 @@ int dfa_tables (int *** tables, int ** tsize) {
         base [s] = slot - c;
         if ( base [s] > offset )
           offset = base [s];
-      } while ( (s = (*row++).s ) != EMPTY && row[-1].n );
+      } while ( (s = row->s) != EMPTY && (*row++).n );
+
+      /*
+      .. states with zero transitions. place somewhere
+      */
+
+      if (s != EMPTY) do {
+        DState * q = states [s];
+        base [s] = 0;
+        accept [s] = RGXMATCH (q) ? q->token : 0;
+      } while ( (s = (*row++).s) != EMPTY );
       break;
     }
 

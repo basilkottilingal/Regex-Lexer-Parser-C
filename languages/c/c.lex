@@ -2,6 +2,7 @@
 /\*           { ast->loc.column += 2; comment(ast); }
 //           { /* fixme : it should be //.*  Neglect */ }
 
+
 auto         { _TOKEN_(AUTO); }
 break        { _TOKEN_(BREAK); }
 case         { _TOKEN_(CASE); }
@@ -49,9 +50,25 @@ _Thread_local                       { _TOKEN_(THREAD_LOCAL); }
 __func__                            { _TOKEN_(FUNC_NAME); }
 
 
+[ \v\f\n\t]+             { AstLocRead(yytext); }
+
 [a-zA-Z_][a-zA-Z_0-9]*                             { _TOKEN_IDENTIFIER_(); }
 (0[xX])[a-fA-F0-9]+(((u|U)(l|L|ll|LL)?)|((l|L|ll|LL)(u|U)?))?   { _TOKEN_(I_CONSTANT); }
 [1-9][0-9]*(((u|U)(l|L|ll|LL)?)|((l|L|ll|LL)(u|U)?))?         { _TOKEN_(I_CONSTANT); }
+
+
+0[0-7]*(((u|U)(l|L|ll|LL)?)|((l|L|ll|LL)(u|U)?))?                        { _TOKEN_(I_CONSTANT); }
+
+
+
+
+[0-9]+([Ee][+-]?[0-9]+)(f|F|l|L)?                        { _TOKEN_(F_CONSTANT); }
+[0-9]*\.[0-9]+([Ee][+-]?[0-9]+)?(f|F|l|L)?                { _TOKEN_(F_CONSTANT); }
+[0-9]+\.([Ee][+-]?[0-9]+)?(f|F|l|L)?                    { _TOKEN_(F_CONSTANT); }
+(0[xX])[a-fA-F0-9]+([Pp][+-]?[0-9]+)(f|F|l|L)?                    { _TOKEN_(F_CONSTANT); }
+(0[xX])[a-fA-F0-9]*\.[a-fA-F0-9]+([Pp][+-]?[0-9]+)(f|F|l|L)?             { _TOKEN_(F_CONSTANT); }
+(0[xX])[a-fA-F0-9]+\.([Pp][+-]?[0-9]+)(f|F|l|L)?                 { _TOKEN_(F_CONSTANT); }
+
 
 \.\.\.        { _TOKEN_(ELLIPSIS); }
 >>=        { _TOKEN_(RIGHT_ASSIGN); }
@@ -101,3 +118,7 @@ __func__                            { _TOKEN_(FUNC_NAME); }
 \^          { _TOKEN_(CARET); }
 \|          { _TOKEN_(PIPE); }
 \?          { _TOKEN_(QUESTION); }
+
+
+"([^"\\]|\\["\\/bfnrt])*"             {  /* fixme : allow unicode */ }
+

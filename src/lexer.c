@@ -199,14 +199,6 @@ int lxr_grammar ( FILE * in, Stack * rgxs, Stack * actions ) {
   return 0;
 }
 
-static int * class;
-static int * base;
-static int * check;
-static int * next;
-
-static int compression () {
-}
-
 /*
 .. This is the main function, that read a lexer grammar and
 .. create a new source generator, that contains lxr() function
@@ -229,22 +221,22 @@ int lxr_generate (FILE * in, FILE * out) {
     return RGXERR;
   }
 
-  int * class, nclass;
-  class_get (&class, &nclass);
+ 
+  /*
+  .. print all the tables used by lexer function
+  */ 
+  int ** tables, * len;
+  dfa_tables (&tables, &len);
+
   char * names [] = {
-    "class", "next", "accept", "base" };
-  int * table [] = { 
-    class /* fixme : */ };
-  int len [] = { 256 };
-  
-  for (int i=0; i<1/* fixme */; i++) {
-    fprintf (out, "\nstatic int lxr_%s [] = {\n", names [i]);
-    for (int j=0; j<len[i]; ++j) {
-      fprintf (out, " %3d", table [i][j]);
-      if (j%10 == 0) 
-        fprintf (out, "\n");
-    }
-    fprintf (out, "\n};");
+    "check", "next", "base", "accept", "class"
+  };
+  for (int i=0; i<5; ++i) {
+    int * arr = tables [i], l = len [i];
+    printf ("\n\nint %s [%d] = {\n", names[i], l);
+    for (int j=0; j<l; ++j)
+      printf ("  %3d%s", arr[j], j%10 ? "" : "\n");
+    printf ("\n}");
   }
 
   /*

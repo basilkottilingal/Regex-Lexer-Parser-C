@@ -45,6 +45,8 @@ int rgx_rpn_print ( int * rpn ) {
           assert (PUSH(inode) >= 0); inode++;
           break;
 
+        case 'q' :
+          rpn += 4;
         case '*' : case ']' : case '+' :
         case '?' : case '>' :
           e1 = POP(stack);

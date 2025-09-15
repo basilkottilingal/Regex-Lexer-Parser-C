@@ -256,7 +256,7 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
   return 1;
 }
 
-#if 0
+#if 1
 void delete (Stack * P, int qsize) {
   int _np = P->len / sizeof (void *);
   uint64_t ** _bits = (uint64_t **) P->stack;
@@ -359,9 +359,6 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
         /*FREE ( Y );*/
       }
     }
-  #if 0
-  delete (P, qsize);
-  #endif
   }
 
   /*

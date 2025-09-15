@@ -7,6 +7,7 @@
 #include "nfa.h"
 #include "allocator.h"
 #include "class.h"
+#include "limits.h"
 
 /*
 .. Functions and objects required for creating a
@@ -236,6 +237,52 @@ static void concatenate ( Dangling * d, State * s ) {
   }
 }
 
+static int rpn_backtrack (int * rpn, int qpos) {
+  int stack[RGXSIZE], depth = 0, c, lookfor;
+  stack[depth++] = 1;
+  do {
+    if (!qpos) return RGXERR;
+    c = rpn [--qpos];
+
+    if ( c <= 0xFF || (c &= 0xFF) == '.' || c == 's' || c == 'S'
+      || c == 'w' || c == 'W' || c == 'd' || c == 'D' )
+    {
+      while (depth && --stack[depth-1] == 0)  
+        depth--;      /* character or character group. operand. POP */
+      continue;
+    }
+
+    if ( c == ']' || c == '>' ) {  /* character class. operand. POP */
+      lookfor = RGXOP (c - 2);               /* look for '[' or '<' */
+      do {
+        if (!qpos) return RGXERR;
+        c = rpn [--qpos];
+      } while (c != lookfor);
+
+      while (depth && --stack[depth-1] == 0)
+        depth--;
+      continue;
+    }
+
+    if ( c == '|' || c == ';' )            /* binary operator. PUSH */
+      stack [depth++] = 2;
+    else if ( c == '*' || c == '+' || c == '?' )  /* unary op. PUSH */
+      stack [depth++] = 1;
+    else if ('}') {                         /* unary operator. PUSH */
+      lookfor = RGXOP ('q');
+      do {
+        if (!qpos) return RGXERR;
+        c = rpn [--qpos];
+      } while (c != lookfor);
+      stack [depth++] = 1;                 
+    }
+    else
+      break;
+  } while ( depth );
+
+  return depth ? RGXERR : qpos;
+}
+
 /*
 .. Create NFA tree for RPN corresponding to a regex pattern
 */
@@ -254,17 +301,83 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   #define  GROUP(_c_)       classes [class[_c_]] = 1
 
   int nnfa = nfa_counter;
-  int n = 0, op, charclass = 0, classes [256], queue [4], nq;
+  int n = 0, op, charclass = 0, classes [256], queue [4], nq,
+    backtrack, min, max;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;
-  while ( ( op = *rpn++ ) >= 0 ) {
+
+  int irpn = 0;
+  while ( ( op = rpn[irpn++] ) >= 0 ) {
     if (ISRGXOP (op)) {
       switch ( (op &= 0XFF) ) {
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
-        case '^' : case '$' : case '{' :
+        case '^' : case '$' :
           /* Not yet implemented */
           return RGXERR;
+        case 'q' :
+          /*
+          .. used for x{m,n} quantifier. we backtrack looking the node
+          .. on which the quantifying happens. so we have to backtrack
+          .. the rpn until we find the subset of rpn on which {m,n}
+          .. operates.
+          */
+          if ( (backtrack = rpn_backtrack (rpn, irpn-1) ) == RGXERR )
+            return RGXERR;
+            
+          min = rpn [irpn+1], max = rpn [irpn+2];
+          if (max != INT_MAX) { 
+            if (max > 64) return RGXOOM;                  /* Too huge */
+              max -= min;
+          }
+          if (min) {
+              if (min > 64) return RGXOOM;               /* Too huge */
+              min--;
+          }
+          break;
+        case '{' :  
+          /*
+          .. q should be followed by {m,n}. An (x){m,n} quantifier can
+          .. be replaced by
+          .. ( (x) (x) (x) ...m times ) ( (x)? (x) ? ... n-m times )
+          .. Similarly an (x){m,} can be replaced by
+          .. ( (x) (x) (x) ...m times ) (x)*
+          .. What we do is simply, replace 'q' by ';' (append)
+          .. and go back the rpn to the appropriate location and
+          .. iterate again until {m,n} is reduced to {0, n-m} or
+          .. {0, infty}. In first case we reiterate with '?' 
+          .. followed by ';' (n-m times). In second case we
+          .. reiterate with '*'.
+          */
+          {
+            int *q = & rpn [irpn - 2];
+            if (min) {
+              printf("[A %d %d]", min, max);
+              (min)--; *q = RGXOP (';');  irpn = backtrack;  break;
+            }
+            if ( (op = ((*q) & 0xFF )) == '?') {
+              printf("[B %d %d]", min, max);
+              *q = RGXOP (';');  irpn -= 2;  break;
+            }
+            if (op == '*') {
+              printf("[C %d %d]", min, max);
+              if ( rpn [irpn] )  { /* Need to append */
+                max = 0;  *q = RGXOP (';');  irpn -= 2;  break;
+              }
+              *q = RGXOP ('q'); irpn += 3; break;
+            }
+            if (max == INT_MAX) {
+              printf("[D %d %d]", min, max);
+              *q = RGXOP ('*'); irpn = backtrack; break;
+            }
+            if (max == 0) {
+              printf("[E %d %d]", min, max);
+              *q = RGXOP ('q'); irpn += 3; break;
+            }
+            printf("[F %d %d]", min, max);
+            max--; *q = RGXOP('?'); irpn = backtrack; break;
+          }
+        break;
         case ';' :
           POP (e1); POP (e0);
           concatenate ( e0.out, e1.state );
@@ -340,6 +453,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
     }
   }
 
+printf("Final {%d} n{%d}", op, n);
   if ( op < EOF || n != 1 ) {
     error ("rpn nfa : wrong regex pattern ");
     return RGXERR;
@@ -348,6 +462,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
   POP (e);
   concatenate ( e.out, fstate (itoken) );
   *start = e.state;
+printf("Return {%d}", nfa_counter - nnfa);
   return nfa_counter - nnfa;        /* Return number of nfa created */
 
   #undef  PUSH

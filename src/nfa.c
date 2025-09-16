@@ -258,12 +258,12 @@ static int rpn_backtrack (int * rpn, int qpos) {
       case '.' : case 's' : case 'S' : case 'w' :
       case 'W' : case 'd' : case 'D' : 
         while (depth && --stack[depth-1] == 0)  
-          depth--;      /* character or character group. operand. POP */
+          depth--;    /* character or character group. operand. POP */
         break;
 
-      case '|' : case ';' :                 /* binary operator. PUSH */
-      stack [depth++] = 2;
-      break;
+      case '|' : case ';' :                /* binary operator. PUSH */
+        stack [depth++] = 2;
+        break;
 
       case '}' :
         lookfor = RGXOP ('q');
@@ -273,7 +273,7 @@ static int rpn_backtrack (int * rpn, int qpos) {
         } while (c != lookfor);
       case '+' : case '*' : case '?' :
         stack [depth++] = 1;          
-        break;                                     /* unary op. PUSH */
+        break;                                    /* unary op. PUSH */
       default :
         return RGXERR;
     }
@@ -384,26 +384,20 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           .. ( (x) (x) (x) ...m times ) ( (x)? (x) ? ... n-m times )
           .. Similarly an (x){m,} can be replaced by
           .. ( (x) (x) (x) ...m times ) (x)*
-          .. What we do is simply, replace 'q' by ';' (append)
-          .. and go back the rpn to the appropriate location and
-          .. iterate again until {m,n} is reduced to {0, n-m} or
-          .. {0, infty}. In first case we reiterate with '?' 
-          .. followed by ';' (n-m times). In second case we
-          .. reiterate with '*'.
           */
           Quantifier * Q = quantifier (&root, rpn, irpn-1);
           if (Q == NULL) return RGXERR;
           char q = Q->op[Q->iter++];
           switch ( q ) {
             case 'x' :
-              irpn = Q->backtrack;    /* Traverse back */
+              irpn = Q->backtrack;                 /* Traverse back */
               break;
             case '\0' :
               Q->iter = 1;
               irpn += 4;
               break;
             default :
-              quant = RGXOP(q);   /* add '?'/'*'/';' to the queue */
+              quant = RGXOP(q);     /* add '?'/'*'/';' to the queue */
               irpn --;
           }
           break;

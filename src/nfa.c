@@ -241,46 +241,100 @@ static int rpn_backtrack (int * rpn, int qpos) {
   int stack[RGXSIZE], depth = 0, c, lookfor;
   stack[depth++] = 1;
   do {
-    if (!qpos) return RGXERR;
-    c = rpn [--qpos];
-
-    if ( c <= 0xFF || (c &= 0xFF) == '.' || c == 's' || c == 'S'
-      || c == 'w' || c == 'W' || c == 'd' || c == 'D' )
-    {
+    if ( !qpos ) return RGXERR;
+    if ( (c = rpn [--qpos]) <= 0xFF ) {
       while (depth && --stack[depth-1] == 0)  
         depth--;      /* character or character group. operand. POP */
       continue;
     }
+   
+    switch ( (c &= 0xFF) ) { 
+      case ']' : case '>' :
+        lookfor = RGXOP (c - 2);
+        do {
+          if (!qpos) return RGXERR;
+          c = rpn [--qpos];
+        } while (c != lookfor);
+      case '.' : case 's' : case 'S' : case 'w' :
+      case 'W' : case 'd' : case 'D' : 
+        while (depth && --stack[depth-1] == 0)  
+          depth--;      /* character or character group. operand. POP */
+        break;
 
-    if ( c == ']' || c == '>' ) {  /* character class. operand. POP */
-      lookfor = RGXOP (c - 2);               /* look for '[' or '<' */
-      do {
-        if (!qpos) return RGXERR;
-        c = rpn [--qpos];
-      } while (c != lookfor);
-
-      while (depth && --stack[depth-1] == 0)
-        depth--;
-      continue;
-    }
-
-    if ( c == '|' || c == ';' )            /* binary operator. PUSH */
+      case '|' : case ';' :                 /* binary operator. PUSH */
       stack [depth++] = 2;
-    else if ( c == '*' || c == '+' || c == '?' )  /* unary op. PUSH */
-      stack [depth++] = 1;
-    else if ('}') {                         /* unary operator. PUSH */
-      lookfor = RGXOP ('q');
-      do {
-        if (!qpos) return RGXERR;
-        c = rpn [--qpos];
-      } while (c != lookfor);
-      stack [depth++] = 1;                 
-    }
-    else
       break;
+
+      case '}' :
+        lookfor = RGXOP ('q');
+        do {
+          if (!qpos) return RGXERR;
+          c = rpn [--qpos];
+        } while (c != lookfor);
+      case '+' : case '*' : case '?' :
+        stack [depth++] = 1;          
+        break;                                     /* unary op. PUSH */
+      default :
+        return RGXERR;
+    }
+
   } while ( depth );
 
-  return depth ? RGXERR : qpos;
+  return qpos;
+}
+
+typedef struct Quantifier {
+  int backtrack, id, iter;
+  char * op;
+  struct Quantifier * next;
+} Quantifier;
+
+Quantifier * quantifier (Quantifier ** root, int * rpn, int irpn) {
+  #define PUSH(_c_) if (len == RGXSIZE) return NULL;                 \
+    op[len++] = _c_
+  Quantifier * Q;
+  while ( (Q = *root) != NULL ) {
+    if (Q->id == irpn) return Q;
+    root = & Q->next;
+  }
+  int b = rpn_backtrack (rpn, irpn),
+    m = rpn [irpn + 2], n = rpn [irpn + 3],
+    first = 1, len = 0;
+  char op [RGXSIZE];
+  if (b == RGXERR) return NULL;  
+  for (int i=0; i<m; ++i) {
+    PUSH ('x');
+    if (first) first = 0;
+    else { PUSH (';'); }
+  }
+  if ( n == INT_MAX ) {
+    PUSH ('x'); PUSH ('*');
+    if (first) first = 0;
+    else { PUSH (';'); }
+  }
+  else {
+    for (int i=0; i<n-m; ++i) {
+      PUSH ('x'); PUSH ('?');
+      if (first) first = 0;
+      else { PUSH (';'); }
+    }
+  }
+  PUSH ('\0');
+  *root = Q = allocate (sizeof (Quantifier));
+  *Q = (Quantifier) {
+    .backtrack = b,
+    .id = irpn,
+    .op = allocate_str (op),
+    .iter = 1
+  };
+  #if 0
+  printf ("\n%s where x is (",op);
+  for(int i=b; i<irpn; ++i)
+    printf ("%c", rpn[i] & 0xFF);
+  printf (")");
+  #endif
+  return Q;
+  #undef PUSH
 }
 
 /*
@@ -302,12 +356,14 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
 
   int nnfa = nfa_counter;
   int n = 0, op, charclass = 0, classes [256], queue [4], nq,
-    backtrack, min, max;
+    quant = 0;
+  Quantifier * root = NULL;
   Fragment stack[RGXSIZE], e, e0, e1;
   State * s;
 
   int irpn = 0;
-  while ( ( op = rpn[irpn++] ) >= 0 ) {
+  while ( ( op = quant ? quant : rpn[irpn++] ) >= 0 ) {
+    quant = 0;
     if (ISRGXOP (op)) {
       switch ( (op &= 0XFF) ) {
         case 'd' : case 's' : case 'S' :
@@ -322,20 +378,6 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           .. the rpn until we find the subset of rpn on which {m,n}
           .. operates.
           */
-          if ( (backtrack = rpn_backtrack (rpn, irpn-1) ) == RGXERR )
-            return RGXERR;
-            
-          min = rpn [irpn+1], max = rpn [irpn+2];
-          if (max != INT_MAX) { 
-            if (max > 64) return RGXOOM;                  /* Too huge */
-              max -= min;
-          }
-          if (min) {
-              if (min > 64) return RGXOOM;               /* Too huge */
-              min--;
-          }
-          break;
-        case '{' :  
           /*
           .. q should be followed by {m,n}. An (x){m,n} quantifier can
           .. be replaced by
@@ -349,35 +391,22 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           .. followed by ';' (n-m times). In second case we
           .. reiterate with '*'.
           */
-          {
-            int *q = & rpn [irpn - 2];
-            if (min) {
-              printf("[A %d %d]", min, max);
-              (min)--; *q = RGXOP (';');  irpn = backtrack;  break;
-            }
-            if ( (op = ((*q) & 0xFF )) == '?') {
-              printf("[B %d %d]", min, max);
-              *q = RGXOP (';');  irpn -= 2;  break;
-            }
-            if (op == '*') {
-              printf("[C %d %d]", min, max);
-              if ( rpn [irpn] )  { /* Need to append */
-                max = 0;  *q = RGXOP (';');  irpn -= 2;  break;
-              }
-              *q = RGXOP ('q'); irpn += 3; break;
-            }
-            if (max == INT_MAX) {
-              printf("[D %d %d]", min, max);
-              *q = RGXOP ('*'); irpn = backtrack; break;
-            }
-            if (max == 0) {
-              printf("[E %d %d]", min, max);
-              *q = RGXOP ('q'); irpn += 3; break;
-            }
-            printf("[F %d %d]", min, max);
-            max--; *q = RGXOP('?'); irpn = backtrack; break;
+          Quantifier * Q = quantifier (&root, rpn, irpn-1);
+          if (Q == NULL) return RGXERR;
+          char q = Q->op[Q->iter++];
+          switch ( q ) {
+            case 'x' :
+              irpn = Q->backtrack;    /* Traverse back */
+              break;
+            case '\0' :
+              Q->iter = 1;
+              irpn += 4;
+              break;
+            default :
+              quant = RGXOP(q);   /* add '?'/'*'/';' to the queue */
+              irpn --;
           }
-        break;
+          break;
         case ';' :
           POP (e1); POP (e0);
           concatenate ( e0.out, e1.state );
@@ -453,7 +482,6 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
     }
   }
 
-printf("Final {%d} n{%d}", op, n);
   if ( op < EOF || n != 1 ) {
     error ("rpn nfa : wrong regex pattern ");
     return RGXERR;
@@ -462,7 +490,6 @@ printf("Final {%d} n{%d}", op, n);
   POP (e);
   concatenate ( e.out, fstate (itoken) );
   *start = e.state;
-printf("Return {%d}", nfa_counter - nnfa);
   return nfa_counter - nnfa;        /* Return number of nfa created */
 
   #undef  PUSH

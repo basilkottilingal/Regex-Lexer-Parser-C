@@ -16,20 +16,21 @@ int main () {
   int nrgx = sizeof (rgx) / sizeof (rgx[0]);
   nfa_reset (rgx, nrgx);
 
+  char buff[60];
+  const char txt[] = "aaccbq555050aabbaba01bcac18Wccdaaalmnn";
   State * nfa = NULL;
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
       
     printf ("\n\nrgx %s ", rgx[i]);
     rgx_rpn (rgx[i], rpn);
     rgx_rpn_print (rpn);
+    printf ("\n");
 
     int status = rgx_nfa (rgx[i], &nfa, 0);
     if (status < RGXEOE) { 
-      printf ("failed in creating NFAi for rgx %s: %d", rgx[i], status); 
+      printf ("\nfailed in creating NFAi for rgx %s: %d", rgx[i], status); 
+      errors ();
     }
-    #if 0
-    const char txt[] = "aaccbqaabbaba01bcccd";
-    char buff[60];
     const char * source = txt;
     do {
       int m = rgx_nfa_match (nfa, source);
@@ -41,7 +42,6 @@ int main () {
         printf ("\nRegex %s: found in txt \"%s\" (\"%s\")", rgx[i], buff, source);
       }
     } while (*++source);
-    #endif
   }
 
   /* free all memory blocks created */

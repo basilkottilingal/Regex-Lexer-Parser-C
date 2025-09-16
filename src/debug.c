@@ -46,7 +46,18 @@ int rgx_rpn_print ( int * rpn ) {
           break;
 
         case 'q' :
+          for (int i=0; i<4; ++i)
+            assert (rpn[i] >= 0);
+          e1 = POP(stack);
+          assert(e1>=0);
+          if (e1>=512)
+            printf (" \033[1;31m[%2d]", e1-512);
+          else
+            printf (" \033[1;31m  %c ", e1);
+          printf (" \033[1;32m{%d, %d}", rpn[1], rpn [2]);
           rpn += 4;
+          assert (PUSH(inode) >= 0); inode++;
+          break;
         case '*' : case ']' : case '+' :
         case '?' : case '>' :
           e1 = POP(stack);

@@ -7,7 +7,7 @@
 
 int main () {
   char * rgx[] = { 
-    "a{1,2}", "www{1,1}", "lmn{0,1}", 
+    "a{1,2}", "w{3}", "l(mn){0,5}", 
     "[50]{4,5}", "bc((a|b)c?[0-9]{2}){,5}[wW]",
     "a{1,}"
   };
@@ -17,7 +17,7 @@ int main () {
   nfa_reset (rgx, nrgx);
 
   char buff[60];
-  const char txt[] = "aaccbq555050aabbaba01bcac18Wccdaaalmnn";
+  const char txt[] = "aaccbq555050wwwwalnlmnlmnmnmnmabbaba01bcac18Wccdaaalmnn";
   State * nfa = NULL;
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
       

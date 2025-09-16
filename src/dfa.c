@@ -66,14 +66,11 @@ static DState * dfa_root ( State * nfa, int nnfa ) {
   if (status < 0) { RTN (NULL); }
 
   nstates = 0;                   /* fixme : Cleaned previous nodes? */
-  int n = 0, exists, primes[] = /* prime > 2^N for N in { 6, 7, .. }*/
+  int n = 6, exists, primes[] = /* prime > 2^N for N in { 6, 7, .. }*/
     { 67, 131, 257, 521, 1031, 2053, 4099, 8209, 16411 };
-  while (++n) {
-    if ( (1<<n) > RGXLIM ) { RTN (NULL); }                /* RGXOOM */
-    if ( (1<<n) >= nnfa  )   break;
-  }
+  while ((1<<n) < nnfa) n++;
   stacksize = BITBYTES (nnfa);        /* rounded as 64 bits multiple*/
-  hsize = primes[ (++n < 6 ? 6 : n) - 6 ];
+  hsize = primes[ n - 6 ];
   while (hsize * sizeof (void *) > PAGE_SIZE)       /* memory limit */
     hsize = primes[ --n - 6 ];
   htable = allocate ( hsize * sizeof (State *) );

@@ -8,7 +8,8 @@
 
 int main () {
 
-  FILE * fp = fopen ("../languages/basic/lexer.txt", "r");
+  /*
+  FILE * fp = fopen ("../languages/basic/json.txt", "r");
   if(!fp) {
     error ("lxr grammar : cannot open file");
     return RGXERR;
@@ -19,6 +20,7 @@ int main () {
   }
 
   fclose (fp);
+  */
 
   return 0;
 }

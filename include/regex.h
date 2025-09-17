@@ -62,6 +62,7 @@
   int  rgx_nfa       ( char   * rgx, State ** nfa, int itoken );
   int  rgx_nfa_match ( State  * nfa, const char * txt );
   int  rgx_list_dfa  ( char ** rgx, int nr, DState ** dfa );
+  int  rgx_lexer_dfa  ( char ** rgx, int nr, DState ** dfa );
   void error         ( const char * err, ... );
 
   enum RGXFLAGS {

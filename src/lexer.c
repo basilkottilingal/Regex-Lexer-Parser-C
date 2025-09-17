@@ -199,26 +199,6 @@ int lxr_grammar ( FILE * in, Stack * rgxs, Stack * actions ) {
   return 0;
 }
 
-
-int lxr_debug (FILE * in, DState ** dfa) {
-
-  Stack * r = stack_new (64 * sizeof (void *)),
-    * a = stack_new (64 * sizeof (void *));
-  if (lxr_grammar (in, r, a)) {
-    error ("lxr generator : reading grammar failed");
-    return RGXERR;
-  }
-
-  char ** rgx = (char **) r->stack;
-  int nrgx = r->len/sizeof (void *);
-  if (rgx_list_dfa (rgx, nrgx, dfa) < 0) {
-    error ("failed to create a minimal dfa");
-    return RGXERR;
-  }
-
-  return 0;
-}
-
 /*
 .. This is the main function, that read a lexer grammar and
 .. create a new source generator, that contains lxr() function
@@ -236,7 +216,7 @@ int lxr_generate (FILE * in, FILE * out) {
   DState * dfa = NULL;
   char ** rgx = (char **) r->stack;
   int nrgx = r->len/sizeof (void *);
-  if (rgx_list_dfa (rgx, nrgx, &dfa) < 0) {
+  if (rgx_lexer_dfa (rgx, nrgx, &dfa) < 0) {
     error ("failed to create a minimal dfa");
     return RGXERR;
   }

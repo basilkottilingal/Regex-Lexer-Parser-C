@@ -30,6 +30,7 @@ int main () {
     exit (-1);
   }
 
+  printf ("\njson tables"); fflush (stdout);
   int ** tables, * len;
   dfa_tables (&tables, &len);
 

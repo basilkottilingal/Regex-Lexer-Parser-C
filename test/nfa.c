@@ -10,16 +10,22 @@
 #include "nfa.h"
 
 int main () {
-  char * rgx[] = { "aa|b", "a[^c]+", "bc*", "b.a", "(a|b)+0", "bc[a-z]+" };
+  char * rgx[] = 
+  { 
+    "aa|b", "a[^c]+", "bc*", "b.a", "(a|b)+0", "bc[a-z]+",
+    "(11*0+0)(0+1)*0*1*"
+  };
 
   int nrgx = sizeof (rgx) / sizeof (rgx[0]);
   nfa_reset (rgx, nrgx);
 
-  const char txt[] = "aaccbqaabbaba01bcccd";
+  const char txt[] = 
+    "aaccbqaabbaba01bcccd11000110100101001010001001000111101010101001";
+
   char buff[60];
   State * nfa = NULL;
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
-    int status = rgx_nfa (rgx[i], &nfa, 0);
+    int status = rgx_nfa (rgx[i], &nfa, 1);
     if (status < RGXEOE) 
       printf ("failed in creating NFAi for rgx %s: %d", rgx[i], status); 
 

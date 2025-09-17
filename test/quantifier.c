@@ -26,7 +26,7 @@ int main () {
     rgx_rpn_print (rpn);
     printf ("\n");
 
-    int status = rgx_nfa (rgx[i], &nfa, 0);
+    int status = rgx_nfa (rgx[i], &nfa, 1);
     if (status < RGXEOE) { 
       printf ("\nfailed in creating NFAi for rgx %s: %d", rgx[i], status); 
       errors ();

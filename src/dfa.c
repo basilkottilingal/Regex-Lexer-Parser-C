@@ -20,8 +20,7 @@ typedef struct DState {
   struct DState ** next;
   struct DState * hchain;
   Stack * bits;
-  int i, flag;
-  int token;                              /* preferred token number */
+  int i, flag;                            /* preferred token number */
   uint32_t hash;
 } Dstate;
 
@@ -164,7 +163,6 @@ rgx_dfa_tree ( DState * root, Stack ** Qptr ) {
 
 static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
-  printf ("\n dfa minimal |p|%zd", P->len/sizeof(void *)); fflush (stdout);
   /*
   .. New dfa set Q' from P.
   .. Use same hash table. Faster than O(n.n) bit comparison
@@ -181,6 +179,7 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
   for (int j=0; j<np; ++j) {                  /* each j in [0, |P|) */
     p[j] = d = allocate (sizeof (DState));             /* p[j] in P */
+    int tkn = 0;
 
     stack_reset (cache);
     Y = bitstack[j] ;
@@ -196,6 +195,8 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
         child->i = j;          /* from now 'i' map each q[i] to p[j]*/
         stack_push (cache, child);                  /* Cache of q[i]*/
         stack_free (child->bits); child->bits = NULL;
+        if (RGXMATCH (child))
+          tkn = RGXMATCH (child);
 
         i64 &= (i64 - 1);                   /* clear lowest set bit */
       }
@@ -204,7 +205,8 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
     *d = (DState) {
       .list = stack_copy (cache),
       .i    = j,
-      .next = allocate ( nclass * sizeof (DState *))
+      .flag = tkn,
+      .next = allocate (nclass * sizeof (DState *))
     };
   }
   stack_free (cache);
@@ -215,15 +217,13 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
   /*
   .. (b) Creating the transition for each p[i]
   .. (b) Identifying accepting states of Q'. Lowest token number
-  ..     will be assigned to q->token for all q in Q'.
+  ..     will be assigned to q->flag for all q in Q'.
   ..     ( Assumes : lower the itoken, more the precedence )
   */
 
-  int c, n, m, token;
+  int c, n, m;
   for (int j=0; j<np; ++j) {
     d = p[j];
-    d->token = INT_MAX;
-    RGXMATCH (d) = 0;
     cache = d->list;
     DState ** s = (DState **) cache->stack;
     n = cache->len / sizeof (void *);
@@ -231,18 +231,11 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
     while (n--) {
       State ** nfa = (State **) s[n]->list->stack;
       m = s[n]->list->len / sizeof (void *);
-      while (m--) {
+      while (m--)
         if ( (c = nfa[m]->id) < 256 && c >= 0 && !next[c] ) {
           if (s[n]->next[c] == NULL) return RGXERR;
           next[c] = p [ s[n]->next[c]->i ];
         }
-        else if (c == NFAACC) {
-          RGXMATCH (d) = 1;
-          token = state_token ( nfa[m] );
-          if (token < d->token)     /* assumes itoken in decr order */
-            d->token = token;
-        }
-      }
       stack_free (s[n]->list); s[n]->list = NULL;
     }
     stack_free (cache); d->list = NULL;
@@ -253,15 +246,23 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
   return 1;
 }
 
-#if 1
-void delete (Stack * P, int qsize) {
+#if 0
+void print_partition (Stack * P, int qsize) {
   int _np = P->len / sizeof (void *);
   uint64_t ** _bits = (uint64_t **) P->stack;
   int _nbits;
-  printf ("\n{ ");
+  printf ("\n  |P| = %d; \n  P = { ", _np);
   for(int i=0; i<_np;++i) {
     BITCOUNT(_bits[i], _nbits, qsize); 
-    printf ("%d, ", _nbits);
+    printf ("%d {", _nbits);
+    for (int j=0; j<qsize>>3; ++j) {
+      uint64_t b = _bits[i][j];
+      while (b) {
+        printf ("%d,", __builtin_ctzll (b) + 64 * j);
+        b &= b-1;
+      }
+    }
+    printf ("} ");
   }
   printf ("}");
 }
@@ -271,28 +272,92 @@ void delete (Stack * P, int qsize) {
 .. Given a "root" NFA, it returns minimized DFA (*dfa)
 */
 
-static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
+static int
+hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
 
   #define RTN(r) stack_free (Q); stack_free (P); return (r);
 
-  STACK(pool);
+  /*
+  .. Given an NFA "nfa", it will first create the root dfa, and from
+  .. which the entire list of dfa states are created and connected via
+  .. transitions using rgx_dfa_tree (). The list of dfa states are
+  .. stored in the stack 'Q' (same as global variable 'states').
+  */
   Stack * Q;
   DState * root = dfa_root (nfa, nnfa); if (!nfa) return RGXERR;
   if ( rgx_dfa_tree (root, &Q) < 0 || !Q )return RGXERR;
   int nq = Q->len / sizeof (void *), qsize = BITBYTES(nq);
-  printf ("\n |Q| %d ", nq); fflush (stdout);
-  BSTACK(F); BSTACK(Q_F);
   DState ** q = (DState **) Q->stack, * next;
-  int count1 = 0, count2 = 0;
-  for (int i=0; i<nq; ++i) {
-    if (RGXMATCH (q[i])) {
-      BITINSERT (F, i); count1++; /* F := { q in Q |q is accepting }*/
-    }
-    else {
-      BITINSERT (Q_F, i); count2++;                          /* Q\F */
-    }
+  printf ("\n |Q| %d ", nq); fflush (stdout);
+
+  if (ntokens > nq) {
+    error ("dfa : Bad Lexer Design. "
+      "Some tokens are never reachable?!");
+    return RGXERR;
   }
-  if (!count1) return RGXERR;
+
+  /*
+  .. Maintain a pool of bitsets. Create the partition set P(Q) stored
+  .. in stack 'P'. 'W' is a temporary stack used in Hopcroft alogirthm
+  */
+  int rounded =                           /* rounded, 2^N >= 1 + nq */
+    1 << (64 - __builtin_clzll ((unsigned long long) nq) );
+  Stack * pool = stack_new (rounded * sizeof (void *)),
+    * P = stack_new (rounded * sizeof (void *)),
+    * W = stack_new (rounded * sizeof (void *));
+
+  /*
+  .. Lets's initialize P with a very coarse partition of Q. Most 
+  .. commonly adopted one is P <- { F, Q\F }, where F is the subset of
+  .. Q which are accepting states. But in case of lexers, where you
+  .. need to distinguish which token is accepted, you cannot put all
+  .. accepting states into one large set F. Instead you start with
+  .. P <- { F_0, F_1, ... F_(t-1), Q \ (F_0 ∪ F_1 ∪.. ∪ F_(t-1)) },
+  .. where F_k is the set of accepting DFAs for token number = k, and
+  .. t is the total number of tokens.
+  .. Since we design such a way that token k has precedence over all
+  .. tokens k' with k' > k, then if there is a string which matches
+  .. both patterns k and k' > k, we put the accepting dfa in F_k.
+  .. This initial partition P, makes sure that you can identify which
+  .. token matched the string. (In case of match collision, it gives
+  .. the lowest token number that satisfied the input string)
+  */
+  
+  {
+    uint64_t ** y = (uint64_t **) P->stack, * f;
+    int q64 = qsize >> 3;
+    for (int i=0; i<nq; ++i) {
+      int token = RGXMATCH (q[i]);
+      if (! y [token]) {
+        BSTACK (bset);
+        y [token] = bset; 
+      }
+      f = y [token];
+      BITINSERT (f, i);
+    }
+
+    uint64_t ** w = (uint64_t **) W->stack;
+    for (int t=1; t<=ntokens; ++t) {
+      if (! y[t]) {
+        error ("dfa : Bad Lexer Design. "
+          "Some tokens are never reachable?!");
+        return RGXERR;
+      }
+      w[t-1] = COPY (y[t]); // FCOPY [t * 64]; 
+    }
+
+    P->len = (ntokens+1) * sizeof (void *);
+    W->len = ntokens * sizeof (void *);
+    if (!y[0]) {
+      y [0] = y [ntokens]; y [ntokens] = NULL;
+      P->len -= sizeof (void *);
+    }
+    
+  }
+
+  #if 0
+  print_partition (P, qsize);
+  #endif
 
   /*
   ..  function hopcroft(DFA):
@@ -313,9 +378,7 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   ..            add smaller of (Y1,Y2) to W
   ..    return P
   */
-
-  STACK(P); if(count2) PUSH (P, Q_F); PUSH (P, F); /* P <- {F, Q\F} */
-  STACK(W); PUSH (W, F);                           /* W <- {F}      */
+  int count1 = 0, count2 = 0;
   BSTACK (X); BSTACK (Y1); BSTACK (Y2);
   while (W->len) {                                 /* while |W| > 0 */
     uint64_t * A = POP (W);                        /* A <- POP (W)  */
@@ -358,6 +421,10 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
     }
   }
 
+  #if 0
+  print_partition (P, qsize);
+  #endif
+
   /*
   .. Partition of the set Q is now stored in P.
   .. (i)   P = {p_0, p_1, .. } with p_i ⊆ Q, and p_i ≠ ∅
@@ -367,8 +434,8 @@ static int hopcroft ( State * nfa, DState ** dfa, int nnfa  ) {
   stack_free(W); stack_free (pool);
   int np = P->len/sizeof (void *); printf ("|Q'| %d", np);
   dfa [0] = q[nq-1];
-  int rval = ( nq == np ) ? 0 :
-    ( nq > np ) ?  dfa_minimal( Q, P, dfa) :
+  int rval = ( nq >= np ) ?
+    dfa_minimal( Q, P, dfa) :
     RGXERR;                              /* |P(Q)| should be <= |Q| */
   RTN (rval);
 
@@ -390,6 +457,27 @@ int rgx_list_dfa ( char ** rgx, int nr, DState ** dfa ) {
   nfa_reset ( rgx, nr );
   class_get ( &class, &nclass );
   for (int i=0; i<nr; ++i) {
+    n = rgx_nfa (rgx[i], &out[i], 1);
+    if ( n < 0 ) {
+      error ("rgx list nfa : cannot create nfa for rgx \"%s\"", rgx);
+      return RGXERR;
+    }
+    nt += n;
+  }
+  *nfa = (State) {
+    .id  = NFAEPS, .ist = nt++, .out = out
+  };
+
+  return hopcroft (nfa, dfa, nt, 1);
+}
+
+int rgx_lexer_dfa ( char ** rgx, int nr, DState ** dfa ) {
+  int n, nt = 0;
+  State * nfa = allocate ( sizeof (State) ),
+    ** out = allocate ( (nr+1) * sizeof (State *) );
+  nfa_reset ( rgx, nr );
+  class_get ( &class, &nclass );
+  for (int i=0; i<nr; ++i) {
     /*
     .. Note that the token number itoken = 0, is reserved for error
     */
@@ -405,8 +493,7 @@ int rgx_list_dfa ( char ** rgx, int nr, DState ** dfa ) {
     .ist = nt++,
     .out = out
   };
-
-  return hopcroft (nfa, dfa, nt);
+  return hopcroft (nfa, dfa, nt, nr);
 }
 
 int rgx_dfa ( char * rgx, DState ** dfa ) {
@@ -416,6 +503,9 @@ int rgx_dfa ( char * rgx, DState ** dfa ) {
 int rgx_dfa_match ( DState * dfa, const char * txt ) {
   const char *start = txt, *end = NULL;
   DState * d = dfa;
+if (RGXMATCH (d)) {
+  printf ("----MATCHES---");
+}
   int c;
   if (RGXMATCH (d))  end = txt;
   while ( (c = 0xFF & *txt++) ) {
@@ -467,7 +557,7 @@ typedef struct Row {
 static int compare ( const void * a, const void * b ) {
   #define CMP(p,q) cmp = ((int) (p > q) - (int) (p < q));            \
     if (cmp) return cmp
-  Row * s = (Row *)a, * r = (Row *)b;
+  Row * s = *((Row **)a), * r = *((Row **)b);
   int cmp;                  /* sort by                              */
   CMP (r->n, s->n);         /* number of transitions (decreasing)   */
   CMP (s->span, r->span);   /* span = end-start  (increasing)       */
@@ -478,18 +568,26 @@ static int compare ( const void * a, const void * b ) {
 }
 
 static void resize (int ** check, int ** next, int * k, int k0){
+  printf ("\n[%d->%d]resize", *k, (*k) +k0); fflush(stdout);
   #define EMPTY -1
   int sold = (*k) * sizeof (int), s = sold + k0 * sizeof(int);
   *check = reallocate (*check, sold, s);
   *next = reallocate (*next, sold, s);
   memset (& (*check) [*k], EMPTY, s - sold);
   (*k) += k0;
+  printf ("d"); fflush(stdout);
 }
 
-static Row * rows_ordered () {
+static Row ** rows_ordered () {
   int m = nstates, n = nclass;
-  Row * rows = allocate ( (m+1) * sizeof (Row)), * row = rows;
-  for (int s=0; s<m; ++s, ++row) {
+  Row ** rows = allocate ( (m+1) * sizeof (Row *));
+  for (int k=0; k<m;) {
+    int nr = m - k;
+    if (nr > PAGE_SIZE / sizeof (Row)) nr = PAGE_SIZE / sizeof (Row);
+    Row * mem = allocate (nr * sizeof (Row));
+    while (nr--) rows [k++] = mem++;
+  }
+  for (int s=0; s<m; ++s) {
     int ntrans = 0, start = EMPTY, end = EMPTY;
     DState ** d = states[s]->next;
     for (int c = 0; c < n; ++c)
@@ -497,17 +595,17 @@ static Row * rows_ordered () {
         ntrans++; end = c;
         if (start == EMPTY) start = c;
       }
-    *row = (Row) {
+    *(rows[s]) = (Row) {
       .n = ntrans, .span = end - start, .start = start, .s = s
     };
   }
-  row->s = EMPTY;
-  qsort (rows, m, sizeof (Row), compare);
+  qsort (rows, m, sizeof (Row*), compare);
   return rows;
 }
 
 int dfa_tables (int *** tables, int ** tsize) {
 
+printf ("tables"); fflush(stdout);
   int ** t = * tables = allocate ( 5 * sizeof (int *) );
   int * len = * tsize = allocate ( 5 * sizeof (int) );
 
@@ -523,30 +621,29 @@ int dfa_tables (int *** tables, int ** tsize) {
 
   memset ( check, EMPTY, k * sizeof (int) );
 
-
   int offset = 0, s;
   /* Order rows by density */
-  Row * rows = rows_ordered (), * row = rows;
+  Row ** rows = rows_ordered (), ** row = rows, * r;
   #if 0
-  Row * _row = rows;
-  while ( (s = (*_row++).s ) != EMPTY ) {
+  int i = 0; while ( (r=rows[i++]) ) {
     printf ("\ns%2d n%2d start%2d span%2d",
-    _row[-1].s, _row[-1].n, _row[-1].start, _row[-1].span);
+      r->s, r->n, r->start, r->span);
   }
   #endif
-  while ( (s = (*row++).s ) != EMPTY ) {
+  while ( (r = *row++) != NULL ) {
     if (offset + 2*n > k)          /* resize next and check if reqd */
       resize (&check, &next, &k, k0);
 
-    if (row[-1].n == 1) {
+    if (r->n == 1) {
       /*
       .. Place all the states with single character differently.
       .. Look for the empty slots beginning from index 0
       */
       int slot = 0, c;
       do {
+        s = r->s;
         DState * q = states [s], ** d = q->next;
-        c = row[-1].start;
+        c = r->start;
         while ( check [slot] != EMPTY || slot - c < 0){
           ++slot;
           if (slot + n > k) {
@@ -555,24 +652,26 @@ int dfa_tables (int *** tables, int ** tsize) {
         }
         next [slot] = d[c]->i;
         check [slot] = s;
-        accept [s] = RGXMATCH (q) ? q->token : 0;
+        accept [s] = RGXMATCH (q);
         base [s] = slot - c;
         if ( base [s] > offset )
           offset = base [s];
-      } while ( (s = row->s) != EMPTY && (*row++).n );
+      } while ( (r = *row++) && r->n );
 
       /*
       .. states with zero transitions. place somewhere
       */
 
-      if (s != EMPTY) do {
+      if (r) do {
+        s = r->s;
         DState * q = states [s];
         base [s] = 0;
-        accept [s] = RGXMATCH (q) ? q->token : 0;
-      } while ( (s = (*row++).s) != EMPTY );
+        accept [s] = RGXMATCH (q);
+      } while ( (r = *row++) );
       break;
     }
 
+    s = r->s;
     DState * q = states [s], ** d = q->next;
 
     int * ptr = stack, c;
@@ -594,11 +693,11 @@ int dfa_tables (int *** tables, int ** tsize) {
       next [offset + c] = d[c]->i;
       check [offset + c] = s;                         /* insert row */
     }
-    accept [s] = RGXMATCH (q) ? q->token : 0;
+    accept [s] = RGXMATCH (q);
     base [s] = offset;
   }
 
-  deallocate (rows, (m+1)*sizeof (Row));
+  deallocate (rows, (m+1)*sizeof (Row*));
 
   len [0] = len [1] = offset + n;
   len [2] = len [3] = m;

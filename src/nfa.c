@@ -307,12 +307,12 @@ Quantifier * quantifier (Quantifier ** root, int * rpn, int irpn) {
     if (first) first = 0;
     else { PUSH (';'); }
   }
-  if ( n == INT_MAX ) {
+  if ( n == INT_MAX ) {                                    /* x{m,} */
     PUSH ('x'); PUSH ('*');
     if (first) first = 0;
     else { PUSH (';'); }
   }
-  else {
+  else {                                                  /* x{m,n} */
     for (int i=0; i<n-m; ++i) {
       PUSH ('x'); PUSH ('?');
       if (first) first = 0;
@@ -513,7 +513,7 @@ int states_add ( State * start, Stack * list, State *** stack) {
   .. We use the "buff" stack when we go down the nfa tree
   .. and thus avoid recusrive call
   */
-  State * s; int n = 0;
+  State * s; int n = 0, tk, tkold = RGXMATCH (list);
   stack[n++] = ( State * [] ) {start, NULL};
   while ( n ) {
     /* Go down the tree, if the State is an "NFAEPS" i.e epsilon */
@@ -529,9 +529,14 @@ int states_add ( State * start, Stack * list, State *** stack) {
       s = *stack[n-1]++;
       s->counter = counter;
       stack_push ( list, s );
-      if (s->id == NFAACC) RGXMATCH(list) = 1;
+      if (s->id == NFAACC) {
+        tk = state_token ( s );
+        tkold = tkold ? ( tk < tkold ? tk : tkold ) : tk;
+      }
     } while ( *stack[n-1] == NULL && --n );
   }
+  
+  RGXMATCH(list) = tkold;
 
   return 0;
 }
@@ -585,16 +590,15 @@ int states_bstack ( Stack * list, Stack * bits ) {
   State ** s = (State ** ) list->stack;
   stack_clear (bits);
   int n = list->nentries;
-  while (n--) {
+  while (n--)
     stack_bit ( bits, s[n]->ist );
-  }
   return 1;
 }
 
 int rgx_match ( char * rgx, const char * txt ) {
   nfa_reset (&rgx, 1);
   State * nfa = NULL;
-  if ( rgx_nfa (rgx, &nfa, 0) < 0 ) {
+  if ( rgx_nfa (rgx, &nfa, 1) < 0 ) {
     error ("rgx match : regex error");
     return RGXERR;
   }

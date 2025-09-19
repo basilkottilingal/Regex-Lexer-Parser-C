@@ -2,7 +2,7 @@ CC     = gcc
 CFLAGS = -Iinclude -Wall
 C99    = -std=c99 -pedantic
 
-RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c src/bits.c src/error.c src/class.c
+RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c src/stack.c src/bits.c src/error.c src/class.c src/compression.c
 LXR    = src/lexer.c
 OBJ    = $(patsubst src/%.c, obj/%.o, $(RGX))
 LOBJ   = $(patsubst src/%.c, obj/%.o, $(LXR))

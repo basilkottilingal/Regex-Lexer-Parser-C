@@ -325,7 +325,6 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
   
   {
     uint64_t ** y = (uint64_t **) P->stack, * f;
-    int q64 = qsize >> 3;
     for (int i=0; i<nq; ++i) {
       int token = RGXMATCH (q[i]);
       if (! y [token]) {
@@ -503,9 +502,6 @@ int rgx_dfa ( char * rgx, DState ** dfa ) {
 int rgx_dfa_match ( DState * dfa, const char * txt ) {
   const char *start = txt, *end = NULL;
   DState * d = dfa;
-if (RGXMATCH (d)) {
-  printf ("----MATCHES---");
-}
   int c;
   if (RGXMATCH (d))  end = txt;
   while ( (c = 0xFF & *txt++) ) {
@@ -522,63 +518,10 @@ if (RGXMATCH (d)) {
 .. ........  Algorithms related to table compression .................
 .. ...................................................................
 .. .................................................................*/
+#include "compression.h"
 
-/*
-.. The transition mapping δ (q, c) is a matrix of size m⋅n where
-.. m = |P(Q)|, and n = |P(Σ)| are the size of minimized dfa set and
-.. equivalence class. Expecting demanding scenarios, like a C lexer
-.. where m ~ 512 and n ~ 64 (just rounded off. Exact numbers depends
-.. on which ANSI C version you are using, etc ), you might need a 2D
-.. table size of few MBs and traversing through such a large table
-.. for every byte input is a bad idea. In scenarios like a C lexer,
-.. where this table is very sparse (δ (q, c) gives a "dead" state),
-.. you have a scope of compacting this 2D table into 3 linear
-.. tables "check[]", "next[]" and "base[]" as mentioned in many
-.. literature and also in codes like flex.
-..
-.. Along with equivalence class table "class[]" and token info table
-.. "accept[]" which stores the most preferred token number for an
-.. accepting state, and 0 (DEAD) for a non-accpeting state.
-.. |check| = |next| = k, where you minimize k.
-.. |accept| = |base| = m
-..
-.. Transition looks like
-..   s <- next [base [s] + class [c]], if check[s] == s
-..
-.. Size of check[], k, is guaranteed to be in the range [n, m⋅n] but
-.. finding the minimal solution is an NP-hard problem and thus rely
-.. on greedy heauristic algorithm.
-*/
-
-typedef struct Row {
-  int s, n, start, span;
-} Row;
-
-static int compare ( const void * a, const void * b ) {
-  #define CMP(p,q) cmp = ((int) (p > q) - (int) (p < q));            \
-    if (cmp) return cmp
-  Row * s = *((Row **)a), * r = *((Row **)b);
-  int cmp;                  /* sort by                              */
-  CMP (r->n, s->n);         /* number of transitions (decreasing)   */
-  CMP (s->span, r->span);   /* span = end-start  (increasing)       */
-  CMP (s->start, r->start); /* first transition  (lowest preferred) */
-  CMP (s->s, r->s);         /* state id (lowest preferred)          */
-  return 0;
-  #undef CMP
-}
-
-static void resize (int ** check, int ** next, int * k, int k0){
-  printf ("\n[%d->%d]resize", *k, (*k) +k0); fflush(stdout);
+static Row ** rows_create () {
   #define EMPTY -1
-  int sold = (*k) * sizeof (int), s = sold + k0 * sizeof(int);
-  *check = reallocate (*check, sold, s);
-  *next = reallocate (*next, sold, s);
-  memset (& (*check) [*k], EMPTY, s - sold);
-  (*k) += k0;
-  printf ("d"); fflush(stdout);
-}
-
-static Row ** rows_ordered () {
   int m = nstates, n = nclass;
   Row ** rows = allocate ( (m+1) * sizeof (Row *));
   for (int k=0; k<m;) {
@@ -587,125 +530,49 @@ static Row ** rows_ordered () {
     Row * mem = allocate (nr * sizeof (Row));
     while (nr--) rows [k++] = mem++;
   }
+  int stack [512];
   for (int s=0; s<m; ++s) {
     int ntrans = 0, start = EMPTY, end = EMPTY;
     DState ** d = states[s]->next;
     for (int c = 0; c < n; ++c)
       if (d[c]) {
-        ntrans++; end = c;
+        stack [ntrans++] = c; stack[ntrans++] = d[c]->i;
+        end = c;
         if (start == EMPTY) start = c;
       }
+    int * copy = allocate (sizeof (int) * ntrans);
+    memcpy ( copy, stack, sizeof (int) * ntrans );
     *(rows[s]) = (Row) {
-      .n = ntrans, .span = end - start, .start = start, .s = s
+      .s = s, .n = ntrans/2, .start = start, .span = end - start, 
+      .token = RGXMATCH (states [s]), .stack = copy
     };
   }
-  qsort (rows, m, sizeof (Row*), compare);
   return rows;
+  #undef EMPTY
 }
 
 int dfa_tables (int *** tables, int ** tsize) {
 
-printf ("tables"); fflush(stdout);
-  int ** t = * tables = allocate ( 5 * sizeof (int *) );
-  int * len = * tsize = allocate ( 5 * sizeof (int) );
+  printf ("tables"); fflush(stdout);
+  
+  int ** t = * tables = allocate ( 7 * sizeof (int *) );
+  int * len = * tsize = allocate ( 7 * sizeof (int) );
 
-  int m = nstates, n = nclass,
-    k0 = 4 * n;     /* let's start with k=4n & reallocate if needed */
-  k0 = 1 << (64 - __builtin_clzll ((unsigned long long)(k0 - 1)) );
-  int k = k0, stack [257];
+  int m = nstates, n = nclass;
+  len [2] = len [3] = len [4] = m;
+  len [5] = n;  len [6] = 256;
+  
+  int * base = allocate (m * sizeof (int)),
+    * accept = allocate (m * sizeof (int)),
+    * def = allocate (m * sizeof (int)),
+    * meta = allocate (n * sizeof (int));
+  /*
+  .. Compressed tables, t[0] = check[], t[1] = next;
+  .. will be set inside row_compression ().
+  */
+  t [2] = base;   t [3] = accept; t [4] = def;
+  t [5] = meta;   t [6] = class;
 
-  int * check = allocate ( k* sizeof (int)),
-    * next = allocate (k * sizeof(int)),
-    * base = allocate (m * sizeof (int)),
-    * accept = allocate (m * sizeof (int));
+  return rows_compression (rows_create (), tables, tsize, m, n );
 
-  memset ( check, EMPTY, k * sizeof (int) );
-
-  int offset = 0, s;
-  /* Order rows by density */
-  Row ** rows = rows_ordered (), ** row = rows, * r;
-  #if 0
-  int i = 0; while ( (r=rows[i++]) ) {
-    printf ("\ns%2d n%2d start%2d span%2d",
-      r->s, r->n, r->start, r->span);
-  }
-  #endif
-  while ( (r = *row++) != NULL ) {
-    if (offset + 2*n > k)          /* resize next and check if reqd */
-      resize (&check, &next, &k, k0);
-
-    if (r->n == 1) {
-      /*
-      .. Place all the states with single character differently.
-      .. Look for the empty slots beginning from index 0
-      */
-      int slot = 0, c;
-      do {
-        s = r->s;
-        DState * q = states [s], ** d = q->next;
-        c = r->start;
-        while ( check [slot] != EMPTY || slot - c < 0){
-          ++slot;
-          if (slot + n > k) {
-            resize (&check, &next, &k, k0);
-          }
-        }
-        next [slot] = d[c]->i;
-        check [slot] = s;
-        accept [s] = RGXMATCH (q);
-        base [s] = slot - c;
-        if ( base [s] > offset )
-          offset = base [s];
-      } while ( (r = *row++) && r->n );
-
-      /*
-      .. states with zero transitions. place somewhere
-      */
-
-      if (r) do {
-        s = r->s;
-        DState * q = states [s];
-        base [s] = 0;
-        accept [s] = RGXMATCH (q);
-      } while ( (r = *row++) );
-      break;
-    }
-
-    s = r->s;
-    DState * q = states [s], ** d = q->next;
-
-    int * ptr = stack, c;
-    for (c=0; c<n; ++c)                            /* each eq class */
-      if ( d[c] )       /* stack transitions excepts DEAD transition*/
-        *ptr++ = c;
-    *ptr = EMPTY;
-
-    ptr = stack;
-    while ( (c=*ptr++) != EMPTY ) {
-      if ( check [offset + c] != EMPTY ) {            /* collision. */
-        ptr = stack;
-        offset ++;                    /* restart, with a new offset */
-      }
-    }
-
-    ptr = stack;
-    while ( (c=*ptr++) != EMPTY ) {
-      next [offset + c] = d[c]->i;
-      check [offset + c] = s;                         /* insert row */
-    }
-    accept [s] = RGXMATCH (q);
-    base [s] = offset;
-  }
-
-  deallocate (rows, (m+1)*sizeof (Row*));
-
-  len [0] = len [1] = offset + n;
-  len [2] = len [3] = m;
-  len [4] = 256;
-
-  t [0] = check;  t [1] = next;  t [2] = base;
-  t [3] = accept; t [4] = class;
-
-  return 0;
-  #undef EMPTY
 }

@@ -180,10 +180,10 @@ enum {
   RGXBGN = 0, /* Just started */
   RGXEND = 8, /* Ending */
 
-              /* Last action was pushing .. */
-  RGXOPD = 1, /* .. a literal operand to RPN stack */
-  RGXOPN = 2, /* .. an operator to RPN stack i.e reduction operation */
-  RGXOPR = 4  /* .. an operator to the operators stack */
+              /* Last action was pushing ..                         */
+  RGXOPD = 1, /* .. a literal operand to RPN stack                  */
+  RGXOPN = 2, /* .. an operator to RPN stack i.e an operation done  */
+  RGXOPR = 4  /* .. an operator to the operators stack.             */
 };
 
 typedef struct iStack {
@@ -246,19 +246,6 @@ int rgx_rpn ( char * s, int * rpn ) {
         case '{' :
           ERR ( !(last & (RGXOPD | RGXOPN)) );
           int n = token [1], m = token [2];
-          /*
-          if (m ==1) {
-            if (n == 1) break;         // {1,1} : omit as No effect 
-            if (n == 0) {
-              PUSH (queue, RGXOP ('?'));           // x{0,1} = x?   
-              break;
-            }
-          }
-          if (!m && n == INT_MAX) {
-            PUSH (queue, RGXOP ('*'));              // x{0,} = x* 
-            break;
-          }
-          */
           /* encode as q{m,n}. q : placeholder */
           OPERATION (RGXOP('q'));
           OPERATION (op); OPERATION (n);

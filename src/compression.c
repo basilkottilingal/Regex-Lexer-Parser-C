@@ -1,19 +1,117 @@
 #include <stdlib.h>
+#include <stdint.h>
+#include <limits.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
 #include "allocator.h"
 #include "compression.h"
+#include "regex.h"
 
 /* ...................................................................
 .. ...................................................................
 .. ........  Algorithms related to table compression .................
 .. ...................................................................
 .. .................................................................*/
+#define PARENT_THRESHOLD     0.7
+#define CHILD_THRESHOLD      0.9
+#define SMALL_THRESHOLD      5
+#define EMPTY                -1
 
-static int nclass;
-static int nstates;
+/*
+.. A row is a cache corresponding to a state 's', which stores a 
+.. cache of (c, δ (s,c)) where the transition δ (s,c) is not a DEAD
+.. state.
+..    cache(s) := { (c, δ (s,c)) | δ (s,c) ≠ DEAD }
+*/
+
+/*
+.. Variables used for local use only
+*/
+typedef struct Delta {
+  int c, delta;
+} Delta;
+static int * check;                                  /* check array */
+static int * next;                                    /* next array */
+static int * base;                                    /* base array */
+static int nclass;                          /* number of eq classes */
+static int nstates;                             /* number of states */
+static int limit;                 /* allocated size of check & next */
+
+/*
+.. For a candidate state 'ps' which is already added to check[], see
+.. the number of exact transitions (c, δ (s,c)), not found in the
+.. candidate's
+*/
+static inline
+int row_candidate ( Row * r, int ps, Delta residual [] ) {
+  int n = 0, i = r->n, 
+    * chk = & check [base [ps]],
+    * nxt = & next [base [ps]];
+  Delta * a = (Delta *) r->stack;
+  while ( i-- )
+    if ( chk [a[i].c] != ps || nxt [a[i].c] != a[i].delta )
+      residual [n++] = a [i];
+  return n;                                    /* size of residual. */
+}
+
+/*
+.. Look for a slot to insert a cache of (c, δ (s,c))
+*/
+static
+int find_slot ( Delta residual [], int nr ) {
+  for (int offset=0; offset<=limit - nclass; ++offset) {
+    int n = nr;
+    while (n--)
+      if ( check [offset + residual [n].c] != EMPTY )
+        break; 
+    if (n >= 0) continue;
+    return offset;
+  }
+  return EMPTY;
+}
+
+/*
+.. Insert a row to check[] ( and corresponndingly to next []),
+.. given a parent candidate 'ps' (which may be empty)
+*/
+static
+int row_insert ( Row * r, int ps, Delta residual [] ) {
+  Delta * res = (ps != EMPTY) ? residual : (Delta *) r->stack;
+  int s = r->s, nr = (ps != EMPTY) ? 
+    row_candidate (r, ps, residual) : r->n;
+  if (!nr)
+    return (base [s] = 0);
+  int offset = find_slot (res, nr);
+  if ( offset == EMPTY ) return RGXERR;
+  int n = nr;
+  while (n--) {
+    check [offset + res [n].c] = s;
+    next [offset + res [n].c] = res [n].delta;
+  }
+  return (base[s] = offset);
+}
+
+/*
+.. How similar are two rows
+*/
+static inline
+int row_similarity ( Row * r, Row * c ) {
+  int n = 0;
+  Delta * a = (Delta *) r->stack, 
+    * b = (Delta *) c->stack;
+  int i = r->n-1, j = c->n-1;
+  while ( i>=0 && j>=0 ) {
+    if (  a[i].c == b[j].c ) {
+      if ( a[i].delta == b[j].delta ) n++;
+      i--, j--;
+    }
+    else if ( a[i].c > b[j].c ) i--;
+    else j--;
+  }
+  return n;
+}
 
 /*
 .. The transition mapping δ (q, c) is a matrix of size m⋅n where
@@ -48,60 +146,67 @@ static int compare ( const void * a, const void * b ) {
   Row * s = *((Row **)a), * r = *((Row **)b);
   int cmp;                  /* sort by                              */
   CMP (r->n, s->n);         /* number of transitions (decreasing)   */
-  CMP (s->span, r->span);   /* span = end-start  (increasing)       */
-  CMP (s->start, r->start); /* first transition  (lowest preferred) */
+  CMP (s->hash, r->hash);   /* Compare signature       */
   CMP (s->s, r->s);         /* state id (lowest preferred)          */
   return 0;
   #undef CMP
 }
 
-static void resize (int ** check, int ** next, int * k, int k0) {
-  printf ("\n[%d->%d]resize", *k, (*k) +k0); fflush(stdout);
-  #define EMPTY -1
-  int sold = (*k) * sizeof (int), s = sold + k0 * sizeof(int);
-  *check = reallocate (*check, sold, s);
-  *next = reallocate (*next, sold, s);
-  memset (& (*check) [*k], EMPTY, s - sold);
-  (*k) += k0;
-  printf ("d"); fflush(stdout);
+static int resize (int k0) {
+  int sold = limit * sizeof (int), s = sold + k0 * sizeof(int);
+  if (s > PAGE_SIZE) return RGXOOM;
+  check = reallocate (check, sold, s);
+  next = reallocate (next, sold, s);
+  memset (& check [limit], EMPTY, s - sold);
+  limit += k0;
+  return 0;
 }
 
-int rows_compression ( Row ** rows, int *** tables, int ** tsize,
-  int m, int n ) 
+int rows_compression ( Row ** rows, int *** tables, 
+  int ** tsize, int m, int n )
 {
+
+  nstates = m, nclass = n;
+  Delta residual [256];
 
   /*
   .. sort the rows by decreasing number of entries, if it matches,
   .. then by increasing span
   */
   qsort (rows, m, sizeof (Row*), compare);
-  Row ** row = rows, * r;
+  Row * r;
   #if 0
   int i = 0; while ( (r=rows[i++]) ) {
-    printf ("\ns%2d n%2d start%2d span%2d {",
-      r->s, r->n, r->start, r->span);
+    printf ("\ns%2d n%2d hash%2u token%2d {",
+      r->s, r->n, r->hash, r->token);
     for (int j=0; j<r->n; ++j)
-      printf ("%d ", r->stack[j]);
+      printf ("%s%3d[%3d] ",
+        j%16 ? "" :"\n\t",
+        r->stack[2*j], r->stack[2*j+1]);
     printf ("}");
   }
   #endif
 
   int k0 = 4 * n;   /* let's start with k=4n & reallocate if needed */
   k0 = 1 << (64 - __builtin_clzll ((unsigned long long)(k0 - 1)) );
-  int k = k0;
+  limit = k0;
 
-  int * check = allocate ( k* sizeof (int)),
-    * next = allocate (k * sizeof(int)),
-    * base = tables [0][2], * accept = tables [0][3],
-    * def  = tables [0][4], * meta   = tables [0][5];
+  check = allocate (limit* sizeof (int));
+  next = allocate (limit * sizeof(int));
+  base = tables [0][2];
+  int * accept = tables [0][3],
+    * def  = tables [0][4],
+    * meta   = tables [0][5];
 
-  memset ( check, EMPTY, k * sizeof (int) );
+  memset ( check, EMPTY, limit * sizeof (int) );
 
   int offset = 0, s;
-  while ( (r = *row++) != NULL ) {
-    if (offset + 2*n > k)          /* resize next and check if reqd */
-      resize (&check, &next, &k, k0);
+  for (int irow=0; (r = rows [irow]) != NULL; ++irow ) {
 
+    if (offset + 2*n > limit)      /* resize next and check if reqd */
+      if (resize (k0)) return RGXOOM;  /* Cldn't compress efficntly */
+
+    #if 0
     if (r->n <= 1) {
       /*
       .. Place all the states with single character differently.
@@ -112,48 +217,77 @@ int rows_compression ( Row ** rows, int *** tables, int ** tsize,
         s = r->s;
         c = r->stack [0], delta = r->stack [1];
         while ( check [slot] != EMPTY || slot - c < 0) {
-          if (++slot + n > k)
-            resize (&check, &next, &k, k0);
+          if (++slot + n > limit)
+            if (resize (k0)) return RGXOOM;
         }
         next [slot] = delta;
         check [slot] = s;
         accept [s] = r->token;
         base [s] = slot - c;
+        def [s] = EMPTY;
         if ( base [s] > offset )
           offset = base [s];
-      } while ( (r = *row++) && r->n );
+      } while ( (r = rows[irow++]) && r->n );
 
       /*
       .. states with zero transitions. place somewhere
       */
-
       if (r) do {
         s = r->s;
         base [s] = 0;
         accept [s] = r->token;
-      } while ( (r = *row++) );
+        def [s] = EMPTY;
+      } while ( (r = rows[irow++]) );
+
       break;
     }
+    #endif
 
-    s = r->s;
-    
-    int * c = r->stack, * delta = r->stack + 1;
-    for (int i=0; i < r->n; i++) {
-      if ( check [offset + *c] != EMPTY ) {      /* collision. */
-        i = -1; offset ++;            /* restart, with a new offset */
-        c = r->stack;
+    /*
+    .. We look among the rows that are already added, to see if 
+    .. it is a good candidate to be taken as the def[this state].
+    .. The best candidate is chosen by minimum of |residual|,
+    .. where residual is the set of transitions (c, delta) which are
+    .. not found in the cache of candidate.
+    */
+    int jrow = irow - 1, nrows = 0, min = INT_MAX, best = EMPTY,
+      queue [2];
+    while (jrow >= 0 && nrows++ < 8) {
+      queue [0] = rows [jrow]->s, queue [1] = def [queue [0]];
+      for (int iq =0; iq < 2 && queue [iq] != EMPTY; ++iq) {
+        int nres = row_candidate ( r, queue [iq], residual );
+        if (nres < min) { min = nres; best = queue [iq]; }
       }
-      c += 2;
+      jrow --;
     }
 
-    c = r->stack;
-    for (int i=0; i < r->n; i++) {
-      next [offset + *c] = *delta;
-      check [offset + *c] = s;                        /* insert row */
-      c += 2; delta += 2;
+    if ( best != EMPTY &&
+      ( rows [irow+1] != NULL && r->n > SMALL_THRESHOLD ) &&
+      ( min > (int) ((1.0 - PARENT_THRESHOLD) * r->n) ) &&
+      ( row_similarity (r, rows[irow+1]) > 
+        (int) (CHILD_THRESHOLD* r->n)) ) 
+    {
+      /*
+      .. After looking for possible parent candidates, we look if
+      .. there are other rows further down (not yet added to check [])
+      .. which is very similar to this row. So we can skip splitting
+      .. this row.
+      */
+      best = EMPTY;
     }
-    accept [s] = r->token;
-    base [s] = offset;
+
+    /*
+    .. We set the def [], and accept [] token of this state
+    .. check[], base[] and next[] will be set inside "row_insert()".
+    */
+    def [r->s] = best;
+    accept [r->s] = r->token;
+    int loc = row_insert ( r, best, residual );
+    if (loc == RGXERR) {
+      error ("table compression : failed");
+      return RGXERR;
+    }
+    if (loc > offset) offset = loc;
   }
 
   deallocate (rows, (m+1)*sizeof (Row*));
@@ -162,5 +296,6 @@ int rows_compression ( Row ** rows, int *** tables, int ** tsize,
   tables [0][0] = check;  tables[0][1] = next;
 
   return 0;
-  #undef EMPTY
 }
+
+#undef EMPTY

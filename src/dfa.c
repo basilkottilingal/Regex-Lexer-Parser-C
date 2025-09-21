@@ -540,10 +540,18 @@ static Row ** rows_create () {
         end = c;
         if (start == EMPTY) start = c;
       }
+    /* A simple hashing */
+    uint32_t h = 2166136261u;
+    if ( ntrans) {
+      h = (h ^ (uint32_t) stack [0]) * 16777619u;
+      h = (h ^ (uint32_t) stack [1]) * 16777619u;
+      h = (h ^ (uint32_t) stack [ntrans-1]) * 16777619u;
+      h = (h ^ (uint32_t) stack [ntrans-2]) * 16777619u;
+    }
     int * copy = allocate (sizeof (int) * ntrans);
     memcpy ( copy, stack, sizeof (int) * ntrans );
     *(rows[s]) = (Row) {
-      .s = s, .n = ntrans/2, .start = start, .span = end - start, 
+      .s = s, .n = ntrans/2, .hash = h,
       .token = RGXMATCH (states [s]), .stack = copy
     };
   }

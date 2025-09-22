@@ -146,7 +146,7 @@ static int compare ( const void * a, const void * b ) {
   Row * s = *((Row **)a), * r = *((Row **)b);
   int cmp;                  /* sort by                              */
   CMP (r->n, s->n);         /* number of transitions (decreasing)   */
-  CMP (s->hash, r->hash);   /* Compare signature       */
+  CMP (s->hash, r->hash);   /* Compare signature                    */
   CMP (s->s, r->s);         /* state id (lowest preferred)          */
   return 0;
   #undef CMP
@@ -162,6 +162,21 @@ static int resize (int k0) {
   return 0;
 }
 
+
+#if 0
+void row_print ( Row ** rows) {
+  int i = 0; Row * r; while ( (r=rows[i++]) ) {
+    printf ("\ns%2d n%2d hash%2u token%2d {",
+      r->s, r->n, r->hash, r->token);
+    for (int j=0; j<r->n; ++j)
+      printf ("%s%3d[%3d] ",
+        j%16 ? "" :"\n\t",
+        r->stack[2*j], r->stack[2*j+1]);
+    printf ("}");
+  }
+}
+#endif
+
 int rows_compression ( Row ** rows, int *** tables, 
   int ** tsize, int m, int n )
 {
@@ -174,18 +189,6 @@ int rows_compression ( Row ** rows, int *** tables,
   .. then by increasing span
   */
   qsort (rows, m, sizeof (Row*), compare);
-  Row * r;
-  #if 0
-  int i = 0; while ( (r=rows[i++]) ) {
-    printf ("\ns%2d n%2d hash%2u token%2d {",
-      r->s, r->n, r->hash, r->token);
-    for (int j=0; j<r->n; ++j)
-      printf ("%s%3d[%3d] ",
-        j%16 ? "" :"\n\t",
-        r->stack[2*j], r->stack[2*j+1]);
-    printf ("}");
-  }
-  #endif
 
   int k0 = 4 * n;   /* let's start with k=4n & reallocate if needed */
   k0 = 1 << (64 - __builtin_clzll ((unsigned long long)(k0 - 1)) );
@@ -195,54 +198,25 @@ int rows_compression ( Row ** rows, int *** tables,
   next = allocate (limit * sizeof(int));
   base = tables [0][2];
   int * accept = tables [0][3],
-    * def  = tables [0][4],
-    * meta   = tables [0][5];
+    * def  = tables [0][4];
+  #if 0
+  int * meta   = tables [0][5];  /* We don't use meta class for now */
+  #endif
 
   memset ( check, EMPTY, limit * sizeof (int) );
 
-  int offset = 0, s;
+  int offset = 0;   Row * r;
   for (int irow=0; (r = rows [irow]) != NULL; ++irow ) {
 
-    if (offset + 2*n > limit)      /* resize next and check if reqd */
-      if (resize (k0)) return RGXOOM;  /* Cldn't compress efficntly */
+    if (offset + 2*n > limit)  /* resize next[] and check[] if reqd */
+      if (resize (k0)) {
+        error ("Table compression: Out of table size limit %d",
+          (int) PAGE_SIZE / sizeof (int));
+        return RGXOOM;
+      }
 
-    #if 0
-    if (r->n <= 1) {
-      /*
-      .. Place all the states with single character differently.
-      .. Look for the empty slots beginning from index 0
-      */
-      int slot = 0, c, delta;
-      if (r->n) do {
-        s = r->s;
-        c = r->stack [0], delta = r->stack [1];
-        while ( check [slot] != EMPTY || slot - c < 0) {
-          if (++slot + n > limit)
-            if (resize (k0)) return RGXOOM;
-        }
-        next [slot] = delta;
-        check [slot] = s;
-        accept [s] = r->token;
-        base [s] = slot - c;
-        def [s] = EMPTY;
-        if ( base [s] > offset )
-          offset = base [s];
-      } while ( (r = rows[irow++]) && r->n );
-
-      /*
-      .. states with zero transitions. place somewhere
-      */
-      if (r) do {
-        s = r->s;
-        base [s] = 0;
-        accept [s] = r->token;
-        def [s] = EMPTY;
-      } while ( (r = rows[irow++]) );
-
-      break;
-    }
-    #endif
-
+    int s = r->s, jrow = irow - 1, nrows = 0, min = INT_MAX,
+      best = EMPTY, queue [2];
     /*
     .. We look among the rows that are already added, to see if 
     .. it is a good candidate to be taken as the def[this state].
@@ -250,8 +224,6 @@ int rows_compression ( Row ** rows, int *** tables,
     .. where residual is the set of transitions (c, delta) which are
     .. not found in the cache of candidate.
     */
-    int jrow = irow - 1, nrows = 0, min = INT_MAX, best = EMPTY,
-      queue [2];
     while (jrow >= 0 && nrows++ < 8) {
       queue [0] = rows [jrow]->s, queue [1] = def [queue [0]];
       for (int iq =0; iq < 2 && queue [iq] != EMPTY; ++iq) {
@@ -271,7 +243,7 @@ int rows_compression ( Row ** rows, int *** tables,
       .. After looking for possible parent candidates, we look if
       .. there are other rows further down (not yet added to check [])
       .. which is very similar to this row. So we can skip splitting
-      .. this row.
+      .. this row. We use this, so there is no "def" chaining.
       */
       best = EMPTY;
     }
@@ -280,8 +252,8 @@ int rows_compression ( Row ** rows, int *** tables,
     .. We set the def [], and accept [] token of this state
     .. check[], base[] and next[] will be set inside "row_insert()".
     */
-    def [r->s] = best;
-    accept [r->s] = r->token;
+    def [s] = best;
+    accept [s] = r->token;
     int loc = row_insert ( r, best, residual );
     if (loc == RGXERR) {
       error ("table compression : failed");

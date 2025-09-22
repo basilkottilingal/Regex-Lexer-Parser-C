@@ -233,20 +233,19 @@ int lxr_generate (FILE * in, FILE * out) {
   char * names [] = {
     "check", "next", "base", "accept", "def", "meta", "class"
   };
+  char * type [] = {
+    "short", "short", "short", "short", "short",
+    "unsigned char", "unsigned char"
+  };
   for (int i=0; i<7; ++i) {
     int * arr = tables [i], l = len [i];
-    printf ("\n\nint %s [%d] = {\n", names[i], l);
+    printf ("\n\nstatic %s %s [%d] = {\n",
+      type [i], names[i], l);
     for (int j=0; j<l; ++j)
-      printf ("  %3d%s", arr[j], j%10 ? "" : "\n");
-    printf ("\n}");
+      printf ("  %3d%s%s", 
+        arr[j], j < l-1 ? "," : "", j%10 ? "" : "\n");
+    printf ("\n};");
   }
-
-  /*
-  fprintf (out, "\n  while ( (c = lxr_input) != EOF ) { "
-    "\n    if (accept) {"
-    "\n      last = lxr_accept [ ]"
-    "\n    }");
-  */
 
   int n = a->len / sizeof (void *);
   char ** action = (char **) a->stack;

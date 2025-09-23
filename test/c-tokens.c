@@ -8,15 +8,13 @@
 
 int main () {
 
-  FILE * fp = fopen ("../languages/c/c.lex", "r");
-  //FILE * fp = fopen ("../languages/c/error.lex", "r");
-  if(!fp) {
-    error ("lxr grammar : cannot open file");
-    return RGXERR;
-  }
+  FILE * fp = fopen ("../languages/c/c99.lex", "r"),
+    * out = fopen ("../languages/c/c99.c", "w");
 
-  if (lxr_generate (fp, stdout)){
+  /* Create the lexer header file to "out"*/
+  if ( lxr_generate (fp, out) ) {
     errors();
+    exit (-1);
   }
 
   fclose (fp);

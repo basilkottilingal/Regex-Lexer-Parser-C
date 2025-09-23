@@ -200,11 +200,41 @@ int lxr_grammar ( FILE * in, Stack * rgxs, Stack * actions ) {
 }
 
 /*
+.. Copy the "head" part of the lexer generator
+.. from src/source.c
+*/
+int lexer_head ( FILE * out ) {
+  char buf[BUFSIZ];
+  size_t n;
+  FILE *in = fopen("../src/source.c", "r");
+  if (!in || !out)
+    return RGXERR;
+
+  while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
+    if (fwrite(buf, 1, n, out) != n)
+      return RGXERR;
+  }
+
+  fclose(in);
+  return 0;
+}
+
+/*
 .. This is the main function, that read a lexer grammar and
 .. create a new source generator, that contains lxr() function
 .. which can be used to tokenize a source file.
 */
 int lxr_generate (FILE * in, FILE * out) {
+
+  if (in == NULL || out == NULL) {
+    error ("lxr : in/out file missing");
+    return RGXERR;
+  }
+
+  if (lexer_head (out)) {
+    error ("lxr : failed writing lexer head");
+    return RGXERR;
+  }
 
   Stack * r = stack_new (64 * sizeof (void *)),
     * a = stack_new (64 * sizeof (void *));
@@ -230,25 +260,39 @@ int lxr_generate (FILE * in, FILE * out) {
     return RGXOOM;
   }
 
+  /*
+  .. fixme : (a) Optimize, (b) give option to customize datatype,
+  .. (c) Make sure, lexer can run on any system (atleast linux),
+  .. (d) boundary assertion still not available. (e) Can you
+  .. add boundary assertion BOL, EOL, EOF as alphabet/transition
+  .. input outside [0x00, 0xFF].
+  */
+
   char * names [] = {
     "check", "next", "base", "accept", "def", "meta", "class"
   };
+
   char * type [] = {
     "short", "short", "short", "short", "short",
     "unsigned char", "unsigned char"
   };
+
+  /*
+  .. Print all tables, before main lexer function
+  */
   for (int i=0; i<7; ++i) {
     int * arr = tables [i], l = len [i];
     if (!arr) continue;
-    printf ("\n\nstatic %s %s [%d] = {\n",
-      type [i], names[i], l);
-    for (int j=0; j<l; ++j)
-      printf ("  %3d%s%s", 
-        arr[j], j < l-1 ? "," : "", j%10 ? "" : "\n");
-    printf ("\n};");
+    fprintf ( out, "\n\nstatic %s %s [%d] = {\n",
+      type [i], names[i], l );
+    for (int j=0; j<l; ++j) {
+      fprintf ( out, "  %3d%s", arr[j], j == l-1 ? "" : ",");
+      if (j%10 == 0)  fprintf (out, "\n");
+      if (j%100 == 0) fprintf (out, "\n");
+    }
+    fprintf ( out, "\n};" );
   }
 
-  #if 0
   int n = a->len / sizeof (void *);
   char ** action = (char **) a->stack;
   for (int i=0; i<n; ++i) {
@@ -261,7 +305,6 @@ int lxr_generate (FILE * in, FILE * out) {
     "\n    fprintf (stderr, \"lxr aborted\");"
     "\n    fflush (stderr); "
     "\n    exit (EXIT_FAILURE);" );
-  #endif
 
   return 0;
 }

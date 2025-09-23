@@ -13,7 +13,7 @@ int main () {
     printf ("%c", (char) c);
   };
 
-  //clean??
+  lxr_clean ();
 
   fclose (fp);
 

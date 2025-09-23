@@ -1,3 +1,8 @@
+/*
+.. This is the main lexer generator file.
+.. Requires a lexical rule file which maps regex to an action.
+*/
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -219,6 +224,33 @@ int lexer_head ( FILE * out ) {
   return 0;
 }
 
+int lexer_tail (FILE * out, Stack * actions) {
+  char buf[BUFSIZ];
+  size_t n;
+  FILE *in = fopen("../src/tokenize.c", "r");
+  if (!in || !out)
+    return RGXERR;
+
+  while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
+    if (fwrite(buf, 1, n, out) != n)
+      return RGXERR;
+  }
+
+  /*
+  int n = a->len / sizeof (void *);
+  char ** action = (char **) a->stack;
+  for (int i=0; i<n; ++i) {
+    fprintf (out, "\n  case %d :"
+      "\n    %s"
+      "\n    break;",
+      i, action [i]);
+  }
+  */
+
+  fclose(in);
+  return 0;
+}
+
 /*
 .. This is the main function, that read a lexer grammar and
 .. create a new source generator, that contains lxr() function
@@ -231,6 +263,10 @@ int lxr_generate (FILE * in, FILE * out) {
     return RGXERR;
   }
 
+  /*
+  .. Copies the whole file "src/source.c" at the top of the
+  .. lexer generator file
+  */
   if (lexer_head (out)) {
     error ("lxr : failed writing lexer head");
     return RGXERR;
@@ -293,18 +329,15 @@ int lxr_generate (FILE * in, FILE * out) {
     fprintf ( out, "\n};" );
   }
 
-  int n = a->len / sizeof (void *);
-  char ** action = (char **) a->stack;
-  for (int i=0; i<n; ++i) {
-    fprintf (out, "\n  case %d :"
-      "\n    %s"
-      "\n    break;",
-      i, action [i]);
+  /*
+  .. write the main lexer function which executes appropriate
+  .. action corresponding to accepted (longest &/ most preferred)
+  .. pattern
+  */
+  if (lexer_tail (out, a)) {
+    error ("lxr : failed writing lexer tail");
+    return RGXERR;
   }
-  fprintf (out, "\n  default : "
-    "\n    fprintf (stderr, \"lxr aborted\");"
-    "\n    fflush (stderr); "
-    "\n    exit (EXIT_FAILURE);" );
 
   return 0;
 }

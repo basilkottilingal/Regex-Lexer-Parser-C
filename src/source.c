@@ -11,7 +11,7 @@
 
 #define LXRERR -2
 
-static int lxrEOFyettoread = 1;
+static char * lxrEOF = NULL;
 static int lxrprevchar = '\n';          /* encode '\n' for '^' bdry */
 static int lxrBGNstatus = 1;
 static int lxrENDstatus = 0;
@@ -39,9 +39,9 @@ extern void lxrin_set (FILE *fp) {
 
 static char lxrdummy[3] = {'\0', 'x', '\0'};
 static char * lxrbuff = lxrdummy;                 /* current buffer */
-static char * lxrlast = lxrdummy + 1;     /* last accepted location */
+static char * lxrstrt = lxrdummy + 1;        /* start of this token */
 static char * lxrbptr = lxrdummy + 1;       /* buffer read location */
-static size_t lxrsize = 0;                     /* current buff size */
+static size_t lxrsize = 1;                     /* current buff size */
 
 #define LXR_BOL() (lxrprevchar == '\n')
 #define LXR_EOL() (*lxrbptr  == '\0' || *lxrbptr == '\n')
@@ -64,7 +64,7 @@ static size_t lxrsize = 0;                     /* current buff size */
   #endif
 
   /*
-  .. Expand buffer and fill it (or until EOF)
+  .. Creata a new buffer / expand buffer and fill it (or until EOF)
   */
   static void lxr_buffer_update () {
     /*
@@ -72,7 +72,17 @@ static size_t lxrsize = 0;                     /* current buff size */
     */
     if (!lxrin) lxrin = stdin;
 
-    size_t non_parsed = lxrbptr - lxrlast;
+    /*
+    .. Warn user for an unexpected case of encountering 0x00
+    .. in the middle of source file.
+    */
+    #if 0
+    if ( lxrbptr - lxrbuff < lxrsize - 1 ) {
+      fprintf (stderr, "lxr warning : encountered byte 0x00 !!");
+    }
+    #endif
+
+    size_t non_parsed = lxrbptr - lxrstrt;
     /*
     .. "non_parsed" : Bytes already consumed by automaton but yet
     .. to be accepted. These bytes will be copied to the new buffer.
@@ -80,7 +90,7 @@ static size_t lxrsize = 0;                     /* current buff size */
     .. (as of now, reallocate if non_parsed == 100% of buffer)
     */
     char * mem;
-    if ( lxrlast == lxrbuff ) {
+    if ( lxrstrt == lxrbuff ) {
       /*
       .. Current buffer not sufficient for the token being read.
       .. Buffer size is doubled
@@ -97,7 +107,7 @@ static size_t lxrsize = 0;                     /* current buff size */
       lxrsize = (size_t) LXR_BUFF_SIZE;
       mem  = LXR_ALLOC ( lxrsize + 2 + sizeof (void *) );
       *( (char **) mem ) = lxrbuff;
-      memcpy (mem + sizeof (void *), lxrlast, non_parsed);
+      memcpy (mem + sizeof (void *), lxrstrt, non_parsed);
     }
 
     if (mem == NULL) {
@@ -110,7 +120,7 @@ static size_t lxrsize = 0;                     /* current buff size */
     .. and current reading ptr
     */
     lxrbuff = mem + sizeof (void *);
-    lxrlast = lxrbuff;
+    lxrstrt = lxrbuff;
     lxrbptr = lxrbuff + non_parsed;
 
     /*
@@ -120,7 +130,7 @@ static size_t lxrsize = 0;                     /* current buff size */
     size_t bytes = non_parsed +
       fread ( lxrbptr, 1, lxrsize - non_parsed, lxrin );
     if (bytes < lxrsize) {
-      if (feof (lxrin)) lxrEOFyettoread = 0;
+      if (feof (lxrin)) lxrEOF = & lxrbuff [bytes];
       else {
         fprintf (stderr, "LXR : fread failed !!");
         exit (-1);
@@ -142,21 +152,29 @@ static size_t lxrsize = 0;                     /* current buff size */
 
     /*
     .. In case next character is unknown, you have to expand/renew the
-    .. the buffer
+    .. the buffer. It's because you need to look ahead to look for
+    .. boundary assertion patterns like abc$
     */
-    if ( lxrbptr[1] == '\0' && lxrEOFyettoread )
+    if ( lxrbptr[1] == '\0' && lxrEOF == NULL )
       lxr_buffer_update ();
 
     /*
-    .. report EOF without consuming, so you can lxr_input () any
-    .. number of times, each time returning EOF.
+    .. return '\0' (equivalent to EOF) without consuming, so you can
+    .. lxr_input () any number of times, each time returning '\0'.
+    .. Note : byte 0x00 is not expected in the source code. So
+    .. encountering it might cause unexpected behaviour. !!
     */
-    if (lxrbptr [0] == '\0')
-      return EOF;
+    if (*lxrbptr)
+      return (int) (lxrprevchar = *lxrbptr++);
+      
+    if (lxrbptr [1] == '\0')
+      return '\0';                                           /* EOF */
 
-    LXR_BDRY ();
+    return  
+      (int) (lxrprevchar = *lxrbptr++);       /* unexpected 0xff !! */
 
-    return (int) (lxrprevchar = *lxrbptr++);
+    /* LXR_BDRY (); */
+
   }
 
 #endif

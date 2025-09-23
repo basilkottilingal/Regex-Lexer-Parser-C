@@ -495,7 +495,7 @@ int rgx_lexer_dfa ( char ** rgx, int nr, DState ** dfa ) {
     /*
     .. Note that the token number itoken = 0, is reserved for error
     */
-    n = rgx_nfa (rgx[i], &out[i], i+1 );
+    n = rgx_nfa (rgx[i], &out[i], i+1);
     if ( n < 0 ) {
       error ("rgx list nfa : cannot create nfa for rgx \"%s\"", rgx);
       return RGXERR;

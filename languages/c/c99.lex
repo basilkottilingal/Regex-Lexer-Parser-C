@@ -121,3 +121,4 @@ __func__                            { _TOKEN_(FUNC_NAME); }
 
 [ \v\f\n\t]+             { AstLocRead(yytext); }
 
+.            { /* catch all*/ }

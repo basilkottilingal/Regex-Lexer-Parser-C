@@ -256,7 +256,7 @@ int rows_compression ( Row ** rows, int *** tables,
     accept [s] = r->token;
     int loc = row_insert ( r, best, residual );
     if (loc == RGXERR) {
-      error ("table compression : failed");
+      error ("table compression : internal error");
       return RGXERR;
     }
     if (loc > offset) offset = loc;

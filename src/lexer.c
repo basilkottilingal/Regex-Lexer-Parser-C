@@ -239,6 +239,7 @@ int lxr_generate (FILE * in, FILE * out) {
   };
   for (int i=0; i<7; ++i) {
     int * arr = tables [i], l = len [i];
+    if (!arr) continue;
     printf ("\n\nstatic %s %s [%d] = {\n",
       type [i], names[i], l);
     for (int j=0; j<l; ++j)
@@ -247,6 +248,7 @@ int lxr_generate (FILE * in, FILE * out) {
     printf ("\n};");
   }
 
+  #if 0
   int n = a->len / sizeof (void *);
   char ** action = (char **) a->stack;
   for (int i=0; i<n; ++i) {
@@ -259,6 +261,7 @@ int lxr_generate (FILE * in, FILE * out) {
     "\n    fprintf (stderr, \"lxr aborted\");"
     "\n    fflush (stderr); "
     "\n    exit (EXIT_FAILURE);" );
+  #endif
 
   return 0;
 }

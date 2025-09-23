@@ -4,6 +4,9 @@
 .. related to reading source code and running action when a lexicon
 .. detected.
 */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #define LXRERR -2
 
@@ -13,15 +16,23 @@
 #define LXR_FREAD_EOF    16
 
 static int lxrstatus = LXR_BOUNDARY_BOL;
-static FILE * lxrin  = stdin;
-static FILE * lxrout = stdout;
+static int lxrprevchar = '\n';          /* encode '\n' for '^' bdry */
+static FILE * lxrin;
 
-extern lxrin_set (FILE *fp) {
-  lxrin = fp;
-}
-
-extern lxrout_set (FILE *fp) {
+/*
+extern void lxrout_set (FILE *fp) {
   lxrout = fp;
+}
+.. static FILE * lxrout;
+*/
+
+extern void lxrin_set (FILE *fp) {
+  if (fp == NULL) {
+    fprintf (stderr, "Invalid lxrin");
+    fflush (stderr);
+    exit (-1);
+  }
+  lxrin = fp;
 }
 
 /*
@@ -34,9 +45,9 @@ extern lxrout_set (FILE *fp) {
 #endif
 
 /*
-.. If user hasn't given a character input () function. User may
-.. override this with defining a macro LXR_INPUT which calls a
-.. function with signature
+.. If user hasn't given a character input function, lxr_input() is
+.. taken as default input function. User may override this by defining
+.. a macro LXR_INPUT which calls a function with signature
 ..   int lxr_input ( void );
 */
 #ifndef LXR_INPUT
@@ -57,51 +68,94 @@ extern lxrout_set (FILE *fp) {
   .. range [0x00, 0xFF]. Exception : EOF (-1).
   */
   int lxr_input () {
-    if ( lxrbptr[0] == '\0' && lxrbptr[1] == '\0' &&
-         (lxrstatus & LXR_FREAD_EOF == 0) ) {
 
+    /*
+    .. In case next character is unknown, you have to expand/renew the
+    .. the buffer
+    */
+    if ( lxrbptr[1] == '\0' /* && lxrbptr[0] == '\0' */ &&
+         (lxrstatus & LXR_FREAD_EOF) == 0 ) {
       /*
       .. Create a new buffer as we hit the end of the current buffer.
-      .. We add the buffer to the linked list of buffers, so at the
-      .. pgm, you can remove each blocks.
       */
+      if (!lxrin) lxrin = stdin;
+
       size_t non_parsed = lxrbptr - lxrlast;
+      /*
+      .. "non_parsed" : Bytes already consumed by automaton but yet
+      .. to be accepted. These bytes will be copied to the new buffer.
+      .. fixme : may reallocate if non_parsed is > 50 % of buffer.
+      .. (as of now, reallocate if non_parsed == 100% of buffer)
+      */
+      char * mem;
       if ( lxrlast == lxrbuff ) {
         /*
         .. Current buffer not sufficient for the token being read.
-        .. Buffer size expanded by extra BUFF_SIZE
+        .. Buffer size is doubled
         */
-        lxrsize *=2; //+= LXR_BUFF_SIZE;
-        char * mem  = LXR_REALLOC ( lxrbuff - sizeof (void *),
+        lxrsize *=2;
+        mem  = LXR_REALLOC ( lxrbuff - sizeof (void *),
           lxrsize + 2 + sizeof (void *) );
       }
       else {
+        /*
+        .. We add the buffer to the linked list of buffers, so at the
+        .. end of the lexing pgm, you can remove each blocks.
+        */
         lxrsize = (size_t) LXR_BUFF_SIZE;
-        char * mem  = LXR_ALLOC ( lxrsize + 2 + sizeof (void *) );
+        mem  = LXR_ALLOC ( lxrsize + 2 + sizeof (void *) );
         *( (void **) mem ) = lxrbuff;
         memcpy (mem + sizeof (void *), lxrlast, non_parsed);
       }
+
+      if (mem == NULL) {
+        fprintf (stderr, "LXR : ALLOC/REALLOC failed. Out of memory");
+        exit (-1);
+      }
+
+      /*
+      .. Update the pointers to the current buffer, last accepted byte
+      .. and current reading ptr
+      */
       lxrbuff = mem + sizeof (void *);
       lxrlast = lxrbuff;
       lxrbptr = lxrbuff + non_parsed;
-      size_t bytes = non_parsed + 
+
+      /*
+      .. Read from input file which the buffer can hold, or till the
+      .. EOF is encountered
+      */
+      size_t bytes = non_parsed +
         fread ( lxrbptr, 1, lxrsize - non_parsed, lxrin );
       if (bytes < lxrsize) {
         if (feof (lxrin)) lxrstatus |= LXR_FREAD_EOF;
-        else return LXR_ERROR;
+        else {
+          fprintf (stderr, "LXR : fread failed !!");
+          exit (-1);
+        }
       }
       lxrbuff [bytes] = lxrbuff [bytes+1] = '\0';
     }
 
     /*lxrstatus &= ~LXR_BOUNDARY_BOL;*/
+    /* fixme : $ still consumes?? */
+    int status =
+      (lxrbptr[1]  == '\0' || lxrbptr[1] == '\n') |          /* '$' */
+      ((lxrprevchar == '\n') << 1);                          /* '^' */
 
+    /*
+    .. report EOF without consuming
+    */
     if (lxrbptr [0] == '\0')
       return EOF;
 
-    if (lxrbptr [1] == '\0')
-      lxrstatus  |= LXR_BOUNDARY_EOF;
+    #if 0
+    if (status & 2) printf ("[^]");
+    if (lxrbptr[0] != '\n') printf ("%c", lxrbptr[0]);
+    if (status & 1) printf ("  [$]\n");
+    #endif
 
-    return *lxrbptr++;
+    return (lxrprevchar = *lxrbptr++);
   }
 
 #endif

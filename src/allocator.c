@@ -7,10 +7,6 @@
 #include "allocator.h"
 #include "bits.h"
 
-/*
-.. fixme : assumes sizeof(char) == 1
-*/
-
 typedef struct Block {
   struct Block * next, * prev;
   size_t size, allocsize;

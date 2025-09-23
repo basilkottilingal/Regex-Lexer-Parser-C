@@ -243,7 +243,8 @@ int rows_compression ( Row ** rows, int *** tables,
       .. After looking for possible parent candidates, we look if
       .. there are other rows further down (not yet added to check [])
       .. which is very similar to this row. So we can skip splitting
-      .. this row. We use this, so there is no "def" chaining.
+      .. this row. We use this, so there is no "def" chaining for
+      .. for those future rows.
       */
       best = EMPTY;
     }

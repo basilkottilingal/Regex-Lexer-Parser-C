@@ -177,8 +177,10 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
     * _q0 = NULL;
   Stack * cache = stack_new (0);
 
+  int reserved = -1;
+
   for (int j=0; j<np; ++j) {                  /* each j in [0, |P|) */
-    p[j] = d = allocate (sizeof (DState));             /* p[j] in P */
+    d = allocate (sizeof (DState));                    /* p[j] in P */
     int tkn = 0;
 
     stack_reset (cache);
@@ -190,8 +192,10 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
         bit = __builtin_ctzll(i64);       /* position of lowest bit */
 
         child = q [bit|base];
-        if (child->i == nq-1)     /* root dfa is the TOP of Q stack */
+        if (child->i == nq-1) {   /* root dfa is the TOP of Q stack */
           _q0 = d;                   /* root of the new DFA tree Q' */
+          reserved = j;
+        }
         child->i = j;          /* from now 'i' map each q[i] to p[j]*/
         stack_push (cache, child);                  /* Cache of q[i]*/
         stack_free (child->bits); child->bits = NULL;
@@ -202,12 +206,23 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
       }
     }
 
+    /*
+    .. Where to place this dfa in states [] array.
+    .. states [0] is reserved for root dfa
+    */
+    int loc = (reserved == -1) ? j+1 : (reserved == j) ? 0 : j;
+
     *d = (DState) {
       .list = stack_copy (cache),
-      .i    = j,
+      .i    = loc,
       .flag = tkn,
       .next = allocate (nclass * sizeof (DState *))
     };
+
+    /*
+    .. Place the dfa @ loc
+    */
+    p [loc] = d;
   }
   stack_free (cache);
 
@@ -253,7 +268,7 @@ void print_partition (Stack * P, int qsize) {
   int _nbits;
   printf ("\n  |P| = %d; \n  P = { ", _np);
   for(int i=0; i<_np;++i) {
-    BITCOUNT(_bits[i], _nbits, qsize); 
+    BITCOUNT(_bits[i], _nbits, qsize);
     printf ("%d {", _nbits);
     for (int j=0; j<qsize>>3; ++j) {
       uint64_t b = _bits[i][j];
@@ -307,7 +322,7 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
     * W = stack_new (rounded * sizeof (void *));
 
   /*
-  .. Lets's initialize P with a very coarse partition of Q. Most 
+  .. Lets's initialize P with a very coarse partition of Q. Most
   .. commonly adopted one is P <- { F, Q\F }, where F is the subset of
   .. Q which are accepting states. But in case of lexers, where you
   .. need to distinguish which token is accepted, you cannot put all
@@ -322,14 +337,14 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
   .. token matched the string. (In case of match collision, it gives
   .. the lowest token number that satisfied the input string)
   */
-  
+
   {
     uint64_t ** y = (uint64_t **) P->stack, * f;
     for (int i=0; i<nq; ++i) {
       int token = RGXMATCH (q[i]);
       if (! y [token]) {
         BSTACK (bset);
-        y [token] = bset; 
+        y [token] = bset;
       }
       f = y [token];
       BITINSERT (f, i);
@@ -342,7 +357,7 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
           "Some tokens are never reachable?!");
         return RGXERR;
       }
-      w[t-1] = COPY (y[t]); // FCOPY [t * 64]; 
+      w[t-1] = COPY (y[t]); // FCOPY [t * 64];
     }
 
     P->len = (ntokens+1) * sizeof (void *);
@@ -351,7 +366,7 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
       y [0] = y [ntokens]; y [ntokens] = NULL;
       P->len -= sizeof (void *);
     }
-    
+
   }
 
   #if 0
@@ -532,15 +547,17 @@ static Row ** rows_create () {
   }
   int stack [512];
   for (int s=0; s<m; ++s) {
-    int ntrans = 0, start = EMPTY, end = EMPTY;
+    int ntrans = 0, start = EMPTY;
     DState ** d = states[s]->next;
     for (int c = 0; c < n; ++c)
       if (d[c]) {
         stack [ntrans++] = c; stack[ntrans++] = d[c]->i;
-        end = c;
         if (start == EMPTY) start = c;
       }
-    /* A simple hashing */
+    /*
+    .. A simple hashing involving first & last entries of the
+    .. transition cache
+    */
     uint32_t h = 2166136261u;
     if ( ntrans) {
       h = (h ^ (uint32_t) stack [0]) * 16777619u;
@@ -561,26 +578,41 @@ static Row ** rows_create () {
 
 int dfa_tables (int *** tables, int ** tsize) {
 
+  /*
+  .. A lexer cannot allow zero length tokens, because this
+  .. non-consuming token will run the lexing function
+  .. infinitely
+  */
+  if ( RGXMATCH (states[0]) ) {
+    error ("zero length token not allowed");
+    return RGXERR;
+  }
+
   printf ("tables"); fflush(stdout);
-  
+
   int ** t = * tables = allocate ( 7 * sizeof (int *) );
   int * len = * tsize = allocate ( 7 * sizeof (int) );
 
   int m = nstates, n = nclass;
   len [2] = len [3] = len [4] = m;
   len [5] = n;  len [6] = 256;
-  
+
   int * base = allocate (m * sizeof (int)),
     * accept = allocate (m * sizeof (int)),
     * def = allocate (m * sizeof (int)),
     * meta = allocate (n * sizeof (int));
+
   /*
   .. Compressed tables, t[0] = check[], t[1] = next;
   .. will be set inside row_compression ().
   */
-  t [2] = base;   t [3] = accept; t [4] = def;
+  t [2] = base;   t [3] = accept;   t [4] = def;
   t [5] = meta;   t [6] = class;
 
+  /*
+  .. Will return the compressed linear tables, if it didn't
+  .. encounter common errors like very large table requirement
+  */
   return rows_compression (rows_create (), tables, tsize, m, n );
 
 }

@@ -28,11 +28,6 @@ int lxr_lex () {
 
       c = lxr_input ();
       ec = class [c];
-      if ( accept [s] ) {
-        acc_len = len;
-        acc_token = accept [s];
-      }
-      ++len;
 
       /* dfa transition by c */
       while ( s != -1 && check [ base [s] + ec ] != s ) {
@@ -41,12 +36,19 @@ int lxr_lex () {
       }
       if ( s != -1 )
         s = next [base[s] + ec];
+
+      ++len;
+
+      if ( accept [s] ) {
+        acc_len = len;
+        acc_token = accept [s];
+      }
     }
 
     /*
     .. Update with new holding character & it's location.
     */
-    char * lxrholdloc = lxrstrt + (acc_len + 1);
+    char * lxrholdloc = lxrstrt + (acc_len ? acc_len : 1);
     lxrholdchar = *lxrholdloc;
     *lxrholdloc = '\0';
 
@@ -65,7 +67,7 @@ int lxr_lex () {
 
     do {   /* Just used a newer block to avoid clash of identifiers */
       switch ( acc_token ) {
-        /*% replace with "case <token no> : <action> break; %*/
+        /*% replace this line with "case <token> : <action> break; %*/
 
         default :                                /* Unknown pattern */
       }

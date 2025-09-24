@@ -263,6 +263,41 @@ int rows_compression ( Row ** rows, int *** tables,
     if (loc > offset) offset = loc;
   }
 
+#if 0
+do {
+int * class = tables [0][6];
+char sample[] = " main()";
+    int c, ec, s = 0,                             /* state iterator */
+      acc_token = 0,                         /* last accepted token */
+      acc_len = 0,             /* length of the last accepted state */
+      len = 0;                   /* consumed length for the current */
+
+    /*
+    .. fixme : copy the content of lxr_input ()
+    */
+    while ( s != -1 && (c = sample [len++]) != '\0')  {
+    printf ("[%d%c], ", s, (char) c);
+
+      ec = class [c];
+
+      /* dfa transition by c */
+      while ( s != -1 && check [ base [s] + ec ] != s ) {
+        /* note : no meta class as of now */
+        s = def [s];
+      }
+      if ( s != -1 )
+        s = next [base[s] + ec];
+
+      if ( accept [s] ) {
+        acc_len = len;
+        acc_token = accept [s];
+      }
+    }
+    printf ("Len matched %d", len-1);
+} while (0);
+#endif
+
+
   deallocate (rows, (m+1)*sizeof (Row*));
 
   tsize [0][0] = tsize [0][1] = offset + n;

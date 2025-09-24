@@ -37,7 +37,7 @@ extern void lxrin_set (FILE *fp) {
   #define LXR_FREE(_a_)         free (_a_)
 #endif
 
-static char lxrdummy[3] = {'\0', 'x', '\0'};
+static char lxrdummy[3] = {0}; //'\0', 'x', '\0'};
 static char * lxrbuff = lxrdummy;                 /* current buffer */
 static char * lxrstrt = lxrdummy + 1;        /* start of this token */
 static char * lxrbptr = lxrdummy + 1;       /* buffer read location */

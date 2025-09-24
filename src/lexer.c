@@ -251,12 +251,14 @@ int lexer_tail (FILE * out, Stack * actions) {
   char ** action = (char **) actions->stack;
   for (int i=0; i < nactions; ++i) {
     #ifdef LXR_DEBUG
-    fprintf (out, "\n      case %d :"
-      "\n        printf (\"%%s\", lxrstrt);\n    break;", i);
+    fprintf (out,
+      "\n      case %d :"
+      "\n        printf (\"%%s\", lxrstrt);"
+      "\n        break;", i);
     #else
-    fprintf (out, "\n      case %d :"
-      "\n    %s\n        break;",
-      i,  action [i]);
+    fprintf (out,
+      "\n      case %d :"
+      "\n    %s\n        break;",  i,  action [i]);
     #endif
   }
 

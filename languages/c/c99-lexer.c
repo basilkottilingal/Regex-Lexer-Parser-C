@@ -158,20 +158,20 @@ static size_t lxrsize = 1;                     /* current buff size */
     if ( lxrbptr[1] == '\0' && lxrEOF == NULL )
       lxr_buffer_update ();
 
+    if (*lxrbptr)
+      return (int) (lxrprevchar = *lxrbptr++);
+      
     /*
     .. return '\0' (equivalent to EOF) without consuming, so you can
     .. lxr_input () any number of times, each time returning '\0'.
     .. Note : byte 0x00 is not expected in the source code. So
     .. encountering it might cause unexpected behaviour. !!
     */
-    if (*lxrbptr)
-      return (int) (lxrprevchar = *lxrbptr++);
-      
     if (lxrbptr [1] == '\0')
       return '\0';                                           /* EOF */
 
     return  
-      (int) (lxrprevchar = *lxrbptr++);       /* unexpected 0xff !! */
+      (int) (lxrprevchar = *lxrbptr++);       /* unexpected 0x00 !! */
 
     /* LXR_BDRY (); */
 

@@ -27,6 +27,9 @@
 .. same way for non-negated class []. It is because the refining algo,
 .. class_refine (), has similar effect. If ¬S := Σ∖S, is the 
 .. complement of S, then : Y ∩ ¬S = Y ∖ S, and Y ∖ ¬S = Y ∩ S. 
+  
+.. We have expanded the alphabet set to accomodate the common
+.. anchors BOL and EOL. So the alphabet set becomes Σ ∪ {BOL, EOL}.
 */
 
 #define ALPH 256
@@ -37,9 +40,11 @@
 
 /*
 .. head and next are used to maintain a linked list of characters in
-.. an equivalence class. END is used to mark the end of the list
+.. an equivalence class. END is used to mark the end of the list.
+.. We have used cache size 258 for worst case scenario (all alphabets
+.. , BOL, EOL are in in their own classes )
 */
-static int next [ALPH], head [ALPH];
+static int next [ALPH + 2], head [ALPH + 2];
 
 /*
 .. class is the mapping C(c) from [0,256) -> [0, nclass) where nclass
@@ -55,15 +60,22 @@ void class_get ( int ** c, int * n ) {
 void class_init () {
 
   /*
-  .. Initialize with just one equivalence class : P ← {Σ}
-  .. and C(c) = 0 ∀ c in Σ
+  .. We have expanded the alphabet set to accomodate the common
+  .. anchors BOL and EOL. So the alphabet set becomes Σ ∪ {BOL, EOL}.
+  .. BOL and EOL are assigned equivalence classes 0 and 1 repectively.
+  .. All alphabets in Σ are put to equivalence class 2. So Initialize
+  .. with just three equivalence classes :
+  ..  P ← {{BOL}, {EOL}, Σ },  and C(c) = 2 ∀ c in Σ
+  .. and refine later as required by character class, character groups
+  .. or stand alone characters in the regex patterns.
   */
 
-  nclass = 1;
-  memset (class, 0, sizeof (class));
-  head [0] = 0;
-  for(int i=0; i<ALPH-1; ++i)
-    next [i] = i+1;
+  nclass = 3;
+  head [0] = head [1] = END; head [2] = 0;
+  for(int i=0; i<ALPH-1; ++i) {
+    class [i] = 2;
+    next  [i] = i+1;
+  }
   next [ALPH-1] = END;
 
 }

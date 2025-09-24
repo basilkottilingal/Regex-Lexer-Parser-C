@@ -15,24 +15,23 @@ int rgx_rpn_print ( int * rpn ) {
   while ( ( op = *rpn++ ) >= 0 ) {
     if (ISRGXOP (op)) {
 
-      if ( (c = (0xFF&op)) == '^' || c == '$' || c == '[' ||
-          c == '<' ) {
+      if ( (c = (0xFF&op)) == '[' || c == '<' ) {
         printf ( "\n\t\033[1;32m[  ] =      %c", (char) c);
         continue; 
       }
 
-      printf ( "\n\t\033[1;32m[%2d] =", inode - 512);
-      switch (op & 0xFF) {
+      switch ( c ) {
 
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
         case '^' :
-          assert (PUSH(inode) >= 0); inode++;
+          assert (PUSH(op) >= 0);
           break;
 
         case ',' : case ';' : case '-' : case '|' :
           e2 = POP(stack); e1 = POP(stack);
           assert(e1>=0 && e2>=0);
+          printf ( "\n\t\033[1;32m[%2d] =", inode - 512);
           if (e1>=512)
             printf (" \033[1;31m[%2d]", e1-512);
           else
@@ -51,6 +50,7 @@ int rgx_rpn_print ( int * rpn ) {
             assert (rpn[i] >= 0);
           e1 = POP(stack);
           assert(e1>=0);
+          printf ( "\n\t\033[1;32m[%2d] =", inode - 512);
           if (e1>=512)
             printf (" \033[1;31m[%2d]", e1-512);
           else
@@ -61,6 +61,7 @@ int rgx_rpn_print ( int * rpn ) {
           break;
         case '*' : case ']' : case '+' :
         case '?' : case '>' :
+          printf ( "\n\t\033[1;32m[%2d] =", inode - 512);
           e1 = POP(stack);
           assert(e1>=0);
           if (e1>=512)

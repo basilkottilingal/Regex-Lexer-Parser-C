@@ -265,7 +265,7 @@ static int rpn_backtrack (int * rpn, int qpos) {
         /*
         .. Warning : you cannot quantify $ or ^. So you cannot expect
         .. ^ or $ as an operand/sub-operand for {m,n} quantifier.
-        .. But still excuse the mistake in rgx pattern.
+        .. But still excuse the in rgx pattern.
         */
       case '.' : case 's' : case 'S' : case 'w' :
       case 'W' : case 'd' : case 'D' : 
@@ -390,7 +390,7 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
           /* Not yet implemented */
           return RGXERR;
         case '^' :
-          STT ( 0, NULL, NULL ); /* Note : class 0 reserved for BOL */
+          STT ( BOL_CLASS, NULL, NULL );
           PUSH ( s, (Dangling *) (s->out) );
           break;
         case 'q' :
@@ -522,28 +522,7 @@ int rgx_nfa ( char * rgx, State ** start, int itoken ) {
     error ("rgx nfa : cannot make rpn for rgx \"%s\"", rgx);
     return RGXERR;
   }
-  
-  State * nfa;
-  if (rpn_nfa ( rpn, &nfa, itoken ) <= 0) {
-    error ("rgx nfa : cannot make nfa for rgx \"%s\"", rgx);
-    return RGXERR;
-  }
-  /*
-  .. Handling BOL. For every rgx starting with '^', it already has a
-  .. BOL transition appended at the beginning of the pattern. Refer to
-  .. the switch () with case '^' in rpn_nfa (). For all other patterns
-  .. we put an ε-transition at the beginning to bypass BOL
-  */
-  if ( rgx [0] != '^' ) {
-    State * s = state (0, NULL, NULL);   /* Note : eq class 0 : BOL */
-    s->out [0] = nfa;
-    *start = state (NFAEPS, nfa, s);
-  }
-  else 
-    *start = nfa;
-  
-  return 0;
-
+  return rpn_nfa ( rpn, start, itoken );
 }
 
 /*
@@ -617,7 +596,8 @@ int rgx_nfa_match ( State * nfa, const char * txt ) {
   int status = states_at_start ( nfa, s0, buff ), c;
 
   /* transition by BOL (class 0) */
-  status = states_transition ( s0, s1, buff, 0 );
+  status = states_transition ( s0, s1, buff, BOL_CLASS );
+  t = s0; s0 = s1; s1 = t;
 
   if (status)         { RTN (status); }
   if (RGXMATCH (s0) )   end = txt;

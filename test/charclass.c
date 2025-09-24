@@ -6,7 +6,7 @@
 #include "regex.h"
 
 int main () {
-  char * rgx[] = { "N[a-z1-3;]", "[^a-f?]|swww*" };
+  char * rgx[] = { "N[a-z1-3;]", "[^a-f?]|swww*", "^[ \\t][A-Z]" };
   int rpn [RGXSIZE];
   for (int i=0; i< sizeof (rgx) / sizeof (rgx[0]); ++i) {
     printf ("\nRpn for rgx \"%s\"", rgx[i]);

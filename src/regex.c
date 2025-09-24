@@ -228,6 +228,16 @@ int rgx_rpn ( char * s, int * rpn ) {
     stack = STACK (rpn, RGXSIZE),
     queue = STACK (queued, 4);
   token [0] = 0;                    /* Signify last token was empty */
+
+  if ( s[0] != '^' ) {
+    /*
+    .. If the rgx doesn't have a BOL anchor requirement, like in ^abc
+    .. we add BOL as optional. Example for pattern abc, we modify it
+    .. as ^?abc
+    */
+    queued [0] = RGXOP ('?'), queued [1] = RGXOP ('^'); queue.n = 2;
+  }
+
   while ((op = queue.n ? queue.a[--queue.n] : rgx_token (rgx)) >= 0) {
     if ( ISRGXOP (op) ) {
       switch ( op & 0xFF ) {

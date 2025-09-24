@@ -237,6 +237,12 @@ static void concatenate ( Dangling * d, State * s ) {
   }
 }
 
+          
+/*
+.. used for x{m,n} quantifier. we backtrack looking the node on which
+.. the quantifying happens. so we have to backtrack the rpn until we
+.. find the subset of rpn on which {m,n} operates.
+*/
 static int rpn_backtrack (int * rpn, int qpos) {
   int stack[RGXSIZE], depth = 0, c, lookfor;
   stack[depth++] = 1;
@@ -255,6 +261,12 @@ static int rpn_backtrack (int * rpn, int qpos) {
           if (!qpos) return RGXERR;
           c = rpn [--qpos];
         } while (c != lookfor);
+      case '^' : case '$' :
+        /*
+        .. Warning : you cannot quantify $ or ^. So you cannot expect
+        .. ^ or $ as an operand/sub-operand for {m,n} quantifier.
+        .. But still excuse the mistake in rgx pattern.
+        */
       case '.' : case 's' : case 'S' : case 'w' :
       case 'W' : case 'd' : case 'D' : 
         while (depth && --stack[depth-1] == 0)  
@@ -273,7 +285,7 @@ static int rpn_backtrack (int * rpn, int qpos) {
         } while (c != lookfor);
       case '+' : case '*' : case '?' :
         stack [depth++] = 1;          
-        break;                                    /* unary op. PUSH */
+        break;                              /* unary operator. PUSH */
       default :
         return RGXERR;
     }
@@ -289,6 +301,12 @@ typedef struct Quantifier {
   struct Quantifier * next;
 } Quantifier;
 
+          
+/*
+.. We create a string like xx;x;x?; which is an rpn representation of
+.. quantification x{3,4}, where x is an operand node which is located
+.. before q{m,n} in the rpn[] by backtracking ( rpn_backtrack () ).
+*/
 Quantifier * quantifier (Quantifier ** root, int * rpn, int irpn) {
   #define PUSH(_c_) if (len == RGXSIZE) return NULL;                 \
     op[len++] = _c_
@@ -368,15 +386,19 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
       switch ( (op &= 0XFF) ) {
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
-        case '^' : case '$' :
+        case '$' :
           /* Not yet implemented */
           return RGXERR;
+        case '^' :
+          STT ( 0, NULL, NULL ); /* Note : class 0 reserved for BOL */
+          PUSH ( s, (Dangling *) (s->out) );
+          break;
         case 'q' :
           /*
           .. used for x{m,n} quantifier. we backtrack looking the node
           .. on which the quantifying happens. so we have to backtrack
           .. the rpn until we find the subset of rpn on which {m,n}
-          .. operates.
+          .. operates. refer rpn_backtrack () 
           */
           /*
           .. q should be followed by {m,n}. An (x){m,n} quantifier can
@@ -500,7 +522,28 @@ int rgx_nfa ( char * rgx, State ** start, int itoken ) {
     error ("rgx nfa : cannot make rpn for rgx \"%s\"", rgx);
     return RGXERR;
   }
-  return rpn_nfa ( rpn, start, itoken );
+  
+  State * nfa;
+  if (rpn_nfa ( rpn, &nfa, itoken ) <= 0) {
+    error ("rgx nfa : cannot make nfa for rgx \"%s\"", rgx);
+    return RGXERR;
+  }
+  /*
+  .. Handling BOL. For every rgx starting with '^', it already has a
+  .. BOL transition appended at the beginning of the pattern. Refer to
+  .. the switch () with case '^' in rpn_nfa (). For all other patterns
+  .. we put an ε-transition at the beginning to bypass BOL
+  */
+  if ( rgx [0] != '^' ) {
+    State * s = state (0, NULL, NULL);   /* Note : eq class 0 : BOL */
+    s->out [0] = nfa;
+    *start = state (NFAEPS, nfa, s);
+  }
+  else 
+    *start = nfa;
+  
+  return 0;
+
 }
 
 /*
@@ -570,7 +613,12 @@ int rgx_nfa_match ( State * nfa, const char * txt ) {
   State ** buff[RGXSIZE];
   Stack * s0 = stack_new (0), * s1 = stack_new(0), * t;
   const char * start = txt, * end = NULL;
+
   int status = states_at_start ( nfa, s0, buff ), c;
+
+  /* transition by BOL (class 0) */
+  status = states_transition ( s0, s1, buff, 0 );
+
   if (status)         { RTN (status); }
   if (RGXMATCH (s0) )   end = txt;
   while ( (c =  0xFF & *txt++) ) {

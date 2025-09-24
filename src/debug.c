@@ -26,6 +26,7 @@ int rgx_rpn_print ( int * rpn ) {
 
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
+        case '^' :
           assert (PUSH(inode) >= 0); inode++;
           break;
 

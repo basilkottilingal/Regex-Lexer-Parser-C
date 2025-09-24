@@ -13,9 +13,9 @@ static char lxrholdchar = '\0';
 int lxr_lex () {
   do {
 
-    *lxrstrt = lxrholdchar;
+    *lxrstrt = lxrholdchar;       /* put back the holding character */
 
-    int s = 0,                                    /* state iterator */
+    int c, ec, s = 0,                             /* state iterator */
       acc_token = 0,                         /* last accepted token */
       acc_len = 0,             /* length of the last accepted state */
       len = 0;                   /* consumed length for the current */
@@ -25,7 +25,9 @@ int lxr_lex () {
     .. fixme : copy the content of lxr_input ()
     */
     while ( s != -1 )  {
-      int c = lxr_input (), ec = class [c];
+
+      c = lxr_input ();
+      ec = class [c];
       if ( accept [s] ) {
         acc_len = len;
         acc_token = accept [s];
@@ -42,7 +44,7 @@ int lxr_lex () {
     }
 
     /*
-    .. Update holding character & it's location.
+    .. Update with new holding character & it's location.
     */
     char * lxrholdloc = lxrstrt + (acc_len + 1);
     lxrholdchar = *lxrholdloc;
@@ -52,13 +54,13 @@ int lxr_lex () {
     .. handling accept/reject. In case of accepting, corresponding
     .. action snippet will be executed. In case of reject (unknown,
     .. pattern) lexer will simply consume without any warning. If you
-    .. don't want to go unnoticed in such cases, you can add an "all
+    .. don't want it to go unnoticed in suchcases, you can add an "all
     .. catch" regex (.) in the last line of the rule section after all
     .. the expected patterns are defined. A sample lex snippet is
     ,, given below
     ..
-    .. [_a-zA-Z][_a-zA-Z0-9]*                   { return (STRING);   }
-    .. .                                        { return (WARNING);  }
+    .. [_a-zA-Z][_a-zA-Z0-9]*                   { return ( IDENT );  }
+    .. .                                        { return ( ERROR );  }
     */
 
     do {   /* Just used a newer block to avoid clash of identifiers */
@@ -70,7 +72,7 @@ int lxr_lex () {
     } while (0);
     lxrbptr = lxrstrt = lxrholdloc;
 
-  } while (lxrholdchar != '\0');
+  } while (lxrholdchar != '\0');/* warning: fails for 0x00 byte too */
 
   return EOF;
 }

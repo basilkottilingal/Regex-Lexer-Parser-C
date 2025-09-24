@@ -65,9 +65,12 @@ int rgx_token ( char ** str ) {
   #define  ERR(cond)    if (cond) return  ( token[0] = RGXERR )
   #define  INPUT()      c = rgx_input(str)
   #define  RGXNXT(_s_)  RGXCHR(*(*_s_))
-  #define  HEX(_c_)     ((_c_ >= '0' && _c_ <= '9') ? (_c_ - '0') : \
-                  (_c_ >= 'a' && _c_ <= 'f') ? (10 + _c_ - 'a') :   \
-                  (_c_ >= 'A' && _c_ <= 'F') ? (10 + _c_ - 'A') : 16)
+  #define  ISBOL()      ( token [0] == 0 ||                          \
+                token [0] == RGXOP ('(') || token [0] == RGXOP ('|') )
+  #define  ISEOL()      ( RGXCHR (* (*str) ) == EOF ) 
+  #define  HEX(_c_)     ((_c_ >= '0' && _c_ <= '9') ? (_c_ - '0') :  \
+                   (_c_ >= 'a' && _c_ <= 'f') ? (10 + _c_ - 'a') :   \
+                   (_c_ >= 'A' && _c_ <= 'F') ? (10 + _c_ - 'A') : 16)
   int c;
   switch ( (INPUT ()) ) {
     case EOF : RTN (RGXEOE);
@@ -128,11 +131,14 @@ int rgx_token ( char ** str ) {
       RTN ( charclass ? c : RGXOP(c) );
     case '^' :
       /*
-      .. fixme : cannot handle if '^' represents start of file, but
-      .. '^' is not at the beginning of rgx pattern as in the example
-      ..  (\W|^)[\w.\-]{0,25}@(yahoo|hotmail|gmail)\.com(\W|$)
+      .. '^' in the following cases are taken as anchor 
+      .. ^[A-Z][a-z]{1,}
+      .. (^|[ \t])SAM
+      .. ([ \t]|^)hello
+      .. i.e when '^' is encountered @ the beginning of the rgx,
+      .. or soon after '|' or '(' operators.
       */
-      RTN ( TOKEN() <= 0 ? RGXOP ('^') : '^' );
+      RTN ( ISBOL() ? RGXOP ('^') : '^' );
     case '?' :
       RTN ( charclass ? c : RGXOP(c) );
     case '-' :
@@ -169,6 +175,8 @@ int rgx_token ( char ** str ) {
   }
   RTN (RGXERR);
 
+  #undef  ISEOL
+  #undef  ISBOL
   #undef  ERR
   #undef  RTN
   #undef  INPUT
@@ -219,7 +227,8 @@ int rgx_rpn ( char * s, int * rpn ) {
   iStack ostack = STACK (RGXOPS, RGXSIZE),
     stack = STACK (rpn, RGXSIZE),
     queue = STACK (queued, 4);
-  while ((op = queue.n ? queue.a[--queue.n] : rgx_token (rgx)) >= 0){
+  token [0] = 0;                    /* Signify last token was empty */
+  while ((op = queue.n ? queue.a[--queue.n] : rgx_token (rgx)) >= 0) {
     if ( ISRGXOP (op) ) {
       switch ( op & 0xFF ) {
         /*
@@ -255,7 +264,10 @@ int rgx_rpn ( char * s, int * rpn ) {
         /*
         .. Non-consuming, boundary assertion patters
         */
-        case '^' : case '$' :
+        case '^' :
+          OPERAND (op);
+          break;
+        case '$' :
           break;
 
         /*

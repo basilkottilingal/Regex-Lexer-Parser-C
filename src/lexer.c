@@ -224,28 +224,48 @@ int lexer_head ( FILE * out ) {
   return 0;
 }
 
+#define LXR_DEBUG
 int lexer_tail (FILE * out, Stack * actions) {
   char buf[BUFSIZ];
-  size_t n;
   FILE *in = fopen("../src/tokenize.c", "r");
   if (!in || !out)
     return RGXERR;
 
+  /*
+  .. Make sure ../src/tokenize doesn't have a line
+  .. longer than 79 chars
+  */
+  while (fgets (buf, 80, in)) {
+    int j = 0; char c;
+    while ( j < 79 && (c = buf [j++]) != '\0' ) {
+      if ( c == '/' && buf [j] == '*' && buf [j+1] == '%' ) {
+        j = -1; break;
+      }
+    }
+    if (j == -1) break;
+    if (fputs (buf,out) == EOF)
+      return RGXERR;
+  }
+
+  int nactions = actions->len / sizeof (void *);
+  char ** action = (char **) actions->stack;
+  for (int i=0; i < nactions; ++i) {
+    #ifdef LXR_DEBUG
+    fprintf (out, "\n      case %d :"
+      "\n        printf (\"%%s\", lxrstrt);\n    break;", i);
+    #else
+    fprintf (out, "\n      case %d :"
+      "\n    %s\n        break;",
+      i,  action [i]);
+    #endif
+  }
+
+  size_t n;
+  fprintf (out, "\n");
   while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
     if (fwrite(buf, 1, n, out) != n)
       return RGXERR;
   }
-
-  /*
-  int n = a->len / sizeof (void *);
-  char ** action = (char **) a->stack;
-  for (int i=0; i<n; ++i) {
-    fprintf (out, "\n  case %d :"
-      "\n    %s"
-      "\n    break;",
-      i, action [i]);
-  }
-  */
 
   fclose(in);
   return 0;
@@ -286,10 +306,10 @@ int lxr_generate (FILE * in, FILE * out) {
     error ("failed to create a minimal dfa");
     return RGXERR;
   }
- 
+
   /*
   .. print all the tables used by lexer function
-  */ 
+  */
   int ** tables, * len;
   if (dfa_tables (&tables, &len) < 0) {
     error ("Table size Out of memory limit");
@@ -314,7 +334,7 @@ int lxr_generate (FILE * in, FILE * out) {
   };
 
   /*
-  .. Print all tables, before main lexer function
+  .. write all tables, before main lexer function
   */
   for (int i=0; i<7; ++i) {
     int * arr = tables [i], l = len [i];
@@ -338,6 +358,11 @@ int lxr_generate (FILE * in, FILE * out) {
     error ("lxr : failed writing lexer tail");
     return RGXERR;
   }
+
+  #ifdef LXR_DEBUG
+  fprintf (out,
+    "\nint main () {\n  lxr_lex ();\n  return 0;\n}" );
+  #endif
 
   return 0;
 }

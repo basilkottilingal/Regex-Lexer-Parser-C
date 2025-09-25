@@ -536,6 +536,7 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 #include "compression.h"
 
 static Row ** rows_create () {
+printf("row create"); fflush(stdout);
   #define EMPTY -1
   int m = nstates, n = nclass;
   Row ** rows = allocate ( (m+1) * sizeof (Row *));
@@ -577,6 +578,7 @@ static Row ** rows_create () {
 }
 
 int dfa_tables (int *** tables, int ** tsize) {
+printf("strt compress"); fflush(stdout);
 
   /*
   .. A lexer cannot allow zero length tokens, because this

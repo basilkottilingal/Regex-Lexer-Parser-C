@@ -35,9 +35,9 @@ int main () {
   dfa_tables (&tables, &len);
 
   char * names [] = {
-    "check", "next", "base", "accept", "class"
+    "check", "next", "base", "accept", "def", "meta", "class"
   };
-  for (int i=0; i<5; ++i) {
+  for (int i=0; i<7; ++i) {
     int * arr = tables [i], l = len [i];
     printf ("\n\nint %s [%d] = {\n", names[i], l);
     for (int j=0; j<l; ++j)

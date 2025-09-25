@@ -165,7 +165,9 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
   /*
   .. New dfa set Q' from P.
-  .. Use same hash table. Faster than O(n.n) bit comparison
+  ..(b) Identifying accepting states of Q'. Lowest token number
+  ..     will be assigned to q->flag for all q in Q'.
+  ..     ( Assumes : lower the itoken, more the precedence )
   */
   uint64_t i64, ** bitstack = (uint64_t **) P->stack, * Y;
   int nq = Q->len/sizeof (void *), np = P->len/sizeof (void *),
@@ -173,9 +175,8 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
   DState * d, ** next, * child,                        /* iterators */
     ** p =  (hsize < np) ? allocate ( np * sizeof (DState *) ) :
       memset ( htable, 0, np * sizeof (DState *) ), /* reuse htable */
-    ** q = (DState **) Q->stack,                /* original dstates */
-    * _q0 = NULL;
-  Stack * cache = stack_new (0);
+    ** q = (DState **) Q->stack;                /* original dstates */
+  Stack * cache = stack_new (0);       /* stacking pointers of q[i] */
 
   int reserved = -1;
 
@@ -193,7 +194,7 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
         child = q [bit|base];
         if (child->i == nq-1) {   /* root dfa is the TOP of Q stack */
-          _q0 = d;                   /* root of the new DFA tree Q' */
+          *dfa = d;                  /* root of the new DFA tree Q' */
           reserved = j;
         }
         child->i = j;          /* from now 'i' map each q[i] to p[j]*/
@@ -208,7 +209,7 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
     /*
     .. Where to place this dfa in states [] array.
-    .. states [0] is reserved for root dfa
+    .. states [0] is reserved for root/start DFA.
     */
     int loc = (reserved == -1) ? j+1 : (reserved == j) ? 0 : j;
 
@@ -218,25 +219,21 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
       .flag = tkn,
       .next = allocate (nclass * sizeof (DState *))
     };
-
-    /*
-    .. Place the dfa @ loc
-    */
     p [loc] = d;
   }
+
   stack_free (cache);
 
-  if(!_q0) return RGXERR;
-  *dfa = _q0;
+  if(reserved == -1) {
+    error ("Cannot locate root DFA!! Internal error");
+    return RGXERR;
+  }
 
   /*
   .. (b) Creating the transition for each p[i]
-  .. (b) Identifying accepting states of Q'. Lowest token number
-  ..     will be assigned to q->flag for all q in Q'.
-  ..     ( Assumes : lower the itoken, more the precedence )
   */
 
-  int c, n, m;
+  int c, n, m, oldindx;
   for (int j=0; j<np; ++j) {
     d = p[j];
     cache = d->list;
@@ -249,13 +246,23 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
       while (m--)
         if ( (c = nfa[m]->id) < 256 && c >= 0 && !next[c] ) {
           if (s[n]->next[c] == NULL) return RGXERR;
-          next[c] = p [ s[n]->next[c]->i ];
+          oldindx = s[n]->next[c]->i;
+          /*
+          .. index 0 in states[] array is reserved for start DFA
+          */
+          next[c] = p [ oldindx == reserved ? 0 :
+            oldindx < reserved ? oldindx + 1 : oldindx ];
         }
       stack_free (s[n]->list); s[n]->list = NULL;
     }
     stack_free (cache); d->list = NULL;
   }
 
+  /*
+  .. Set global variables.
+  .. (a) final cache of minimzed DFA
+  .. (b) size
+  */
   states = p;
   nstates = np;
   return 1;
@@ -536,7 +543,6 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 #include "compression.h"
 
 static Row ** rows_create () {
-printf("row create"); fflush(stdout);
   #define EMPTY -1
   int m = nstates, n = nclass;
   Row ** rows = allocate ( (m+1) * sizeof (Row *));
@@ -578,7 +584,6 @@ printf("row create"); fflush(stdout);
 }
 
 int dfa_tables (int *** tables, int ** tsize) {
-printf("strt compress"); fflush(stdout);
 
   /*
   .. A lexer cannot allow zero length tokens, because this
@@ -589,8 +594,6 @@ printf("strt compress"); fflush(stdout);
     error ("zero length token not allowed");
     return RGXERR;
   }
-
-  printf ("tables"); fflush(stdout);
 
   int ** t = * tables = allocate ( 7 * sizeof (int *) );
   int * len = * tsize = allocate ( 7 * sizeof (int) );
@@ -603,7 +606,6 @@ printf("strt compress"); fflush(stdout);
     * accept = allocate (m * sizeof (int)),
     * def = allocate (m * sizeof (int)),
     * meta = allocate (n * sizeof (int));
-
   /*
   .. Compressed tables, t[0] = check[], t[1] = next;
   .. will be set inside row_compression ().

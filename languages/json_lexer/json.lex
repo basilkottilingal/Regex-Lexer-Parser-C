@@ -9,4 +9,4 @@ null                                            { NULL  }
 \{                                              { OBJECT_START }
 \}                                              { OBJECT_END }
 -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?  { NUMBER }
-"([^"\\]|\\["\\/bfnrt]|\\u[0-9a-fA-F]{4})*"     { STRING }
+"([^"\\]|\\["\\/bfnrt])*"                       { STRING }

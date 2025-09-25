@@ -35,6 +35,7 @@ typedef struct Delta {
 static int * check;                                  /* check array */
 static int * next;                                    /* next array */
 static int * base;                                    /* base array */
+static int * def;
 static int nclass;                          /* number of eq classes */
 static int nstates;                             /* number of states */
 static int limit;                 /* allocated size of check & next */
@@ -52,16 +53,20 @@ int row_candidate ( Row * r, int ps, Delta residual [] ) {
     * nxt = & next [base [ps]];
   Delta * a = (Delta *) r->stack;
   while ( i-- >= 0) {
-    int min = i >= 0 ? a[i].c : 0;
-    while (c >= min) {
-      if ( chk [c] == ps && nxt [c] != EMPTY )
+    int min = i >= 0 ? a[i].c : -1;
+    while (c > min) {
+      int _s = ps;
+      while (_s != EMPTY && check [base [_s]+c] != _s){
+        _s =def [_s]; 
+      }
+      if ( _s != EMPTY && next [base [_s]+c] != EMPTY )
         residual [n++] = (Delta) {c, EMPTY};
       c--;
     }
-    c = a[i].c - 1; // j--
     if (i < 0) break;
-    if ( chk [a[i].c] != ps || nxt [a[i].c] != a[i].delta )
+    if ( chk [c] != ps || nxt [c] != a[i].delta )
       residual [n++] = a [i];
+    c--;
   }
   return n;                                    /* size of residual. */
 }
@@ -89,6 +94,7 @@ void debug (Row * r, int ps, Delta residual []) {
   for (int i=0; i<nk;++i)
     printf("(%d,%d) ", residual[i].c, residual[i].delta);
   printf ("}");
+  //return n;                                    /* size of residual. */
 }
 
 /*
@@ -188,14 +194,12 @@ static int compare ( const void * a, const void * b ) {
 }
 
 static int resize (int k0) {
-printf("resize"); fflush(stdout);
   int sold = limit * sizeof (int), s = sold + k0 * sizeof(int);
   if (s > PAGE_SIZE) return RGXOOM;
   check = reallocate (check, sold, s);
   next = reallocate (next, sold, s);
   memset (& check [limit], EMPTY, s - sold);
   limit += k0;
-printf("d"); fflush(stdout);
   return 0;
 }
 
@@ -217,7 +221,6 @@ void row_print ( Row ** rows) {
 int rows_compression ( Row ** rows, int *** tables, 
   int ** tsize, int m, int n )
 {
-printf("table_compression"); fflush(stdout);
 
   nstates = m, nclass = n;
   Delta residual [256];
@@ -235,8 +238,8 @@ printf("table_compression"); fflush(stdout);
   check = allocate (limit* sizeof (int));
   next = allocate (limit * sizeof(int));
   base = tables [0][2];
-  int * accept = tables [0][3],
-    * def  = tables [0][4];
+  def  = tables [0][4];
+  int * accept = tables [0][3];
   #if 0
   int * meta   = tables [0][5];  /* We don't use meta class for now */
   #endif
@@ -289,7 +292,6 @@ printf("table_compression"); fflush(stdout);
       */
       best = EMPTY;
     }
-debug (r, best, residual);
 
 
     /*
@@ -305,7 +307,7 @@ debug (r, best, residual);
     }
     if (loc > offset) offset = loc;
   }
-
+#if 0
 do {
   Row ** row = rows;
   while ( (r = *row++) != NULL) {
@@ -323,7 +325,10 @@ do {
     int k=0;
     for (int c=0; c<nclass; ++c) {
       int ps = s;
-      while (ps != -1 && check [base [ps] +c] != ps) ps = def[ps];
+      while (ps != -1 && check [base [ps] +c] != ps) {
+        //printf ("<%d|%d|%d|%d>", ps, c, base[ps], def[ps]);
+        ps = def[ps];
+      }
       if (ps == -1 || next [base [ps]+c] == -1) continue;
       printf ("(%2d|%2d), ", c, next [base [ps] + c]);
       if (k++ %10 == 9) printf("\n        ");
@@ -332,11 +337,10 @@ do {
   }
 
 } while (0);
-#if 0
 
 do {
 int * class = tables [0][6];
-char sample[] = " main()";
+char sample[] = "\"main\"()";
     int c, ec, s = 0,                             /* state iterator */
       acc_token = 0,                         /* last accepted token */
       acc_len = 0,             /* length of the last accepted state */
@@ -352,13 +356,14 @@ char sample[] = " main()";
 
       /* dfa transition by c */
       while ( s != -1 && check [ base [s] + ec ] != s ) {
+printf ("<%d, %d>", s, ec);
         /* note : no meta class as of now */
         s = def [s];
       }
       if ( s != -1 )
         s = next [base[s] + ec];
 
-      if ( accept [s] ) {
+      if ( s != -1 && accept [s] ) {
         acc_len = len;
         acc_token = accept [s];
       }
@@ -366,7 +371,6 @@ char sample[] = " main()";
     printf ("Len matched %d", len-1);
 } while (0);
 #endif
-
 
   deallocate (rows, (m+1)*sizeof (Row*));
 

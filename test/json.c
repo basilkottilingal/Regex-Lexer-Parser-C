@@ -22,7 +22,8 @@ int main () {
   for (int i=0; i<nrgx; ++i)
     printf ("\n%s", rgx[i]);
   DState * dfa = NULL;
-  int status = rgx_list_dfa (rgx, nrgx, &dfa);
+  //int status = rgx_list_dfa (rgx, nrgx, &dfa);
+  int status = rgx_lexer_dfa (rgx, nrgx, &dfa);
   if (status < 0) {
     errors ();
     printf ("cannot make DFA. aborting");
@@ -72,7 +73,7 @@ int main () {
     else if (m > 0) {
       m -= 1; buff[m] = '\0';
       if(m) memcpy (buff, source, m);
-      printf ("%s", buff);
+      printf ("\n%s", buff);
       source += m < 1 ? 1 : m;
     }
     else {

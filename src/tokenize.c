@@ -25,9 +25,9 @@ int lxr_lex () {
     .. fixme : copy the content of lxr_input ()
     */
     while ( s != -1 )  {
+      ++len;
 
-      c = lxr_input ();
-      ec = class [c];
+      c = lxr_input (); ec = class [c];
 
       /* dfa transition by c */
       while ( s != -1 && check [ base [s] + ec ] != s ) {
@@ -36,10 +36,9 @@ int lxr_lex () {
       }
       if ( s != -1 )
         s = next [base[s] + ec];
+      
 
-      ++len;
-
-      if ( accept [s] ) {
+      if ( s != -1 && accept [s] ) {
         acc_len = len;
         acc_token = accept [s];
       }

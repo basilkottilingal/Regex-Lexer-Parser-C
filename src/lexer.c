@@ -253,8 +253,8 @@ int lexer_tail (FILE * out, Stack * actions) {
     #ifdef LXR_DEBUG
     fprintf (out,
       "\n      case %d :"
-      "\n        printf (\"\\ntoken %%s\", lxrstrt);"
-      "\n        break;", i+1);
+      "\n        printf (\"\\ntoken [%3d] %%s\", lxrstrt);"
+      "\n        break;", i+1, i+1);
     #else
     fprintf (out,
       "\n      case %d :"

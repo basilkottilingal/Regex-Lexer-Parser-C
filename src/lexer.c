@@ -344,7 +344,7 @@ int lxr_generate (FILE * in, FILE * out) {
     fprintf ( out, "\n\nstatic %s %s [%d] = {\n",
       type [i], names[i], l );
     for (int j=0; j<l; ++j) {
-      fprintf ( out, "  %3d%s", arr[j], j == l-1 ? "" : ",");
+      fprintf ( out, " %4d%s", arr[j], j == l-1 ? "" : ",");
       if (j%10 == 0)  fprintf (out, "\n");
       if (j%100 == 0) fprintf (out, "\n");
     }

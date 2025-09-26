@@ -37,7 +37,7 @@ extern void lxrin_set (FILE *fp) {
   #define LXR_FREE(_a_)         free (_a_)
 #endif
 
-static char lxrdummy[3] = {0}; //'\0', 'x', '\0'};
+static char lxrdummy[3] = {0};
 static char * lxrbuff = lxrdummy;                 /* current buffer */
 static char * lxrstrt = lxrdummy + 1;        /* start of this token */
 static char * lxrbptr = lxrdummy + 1;       /* buffer read location */
@@ -163,7 +163,7 @@ static size_t lxrsize = 1;                     /* current buff size */
     .. return EOF without consuming, so you can call lxr_input () any
     .. number of times, each time returning EOF. 
     */
-    if (lxrbptr [1] == '\0')
+    if (lxrbptr == lxrEOF)
       return EOF;
 
     /* 

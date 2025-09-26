@@ -9,6 +9,7 @@
 */
 
 static char lxrholdchar = '\0';
+#define LXR_MAXDEPTH    1
 
 int lxr_lex () {
 
@@ -21,7 +22,8 @@ int lxr_lex () {
     int c, ec, s = 0,                             /* state iterator */
       acc_token = 0,                         /* last accepted token */
       acc_len = 0,             /* length of the last accepted state */
-      len = 0;                   /* consumed length for the current */
+      len = 0,                   /* consumed length for the current */
+      depth;                                   /* depth of fallback */
 
     /*
     .. fixme : if(BOL), do the transition here. ec [BOL] = 0;
@@ -41,9 +43,14 @@ int lxr_lex () {
       ++len;
 
       /* dfa transition by c */
+      depth = 0;
       while ( s != -1 && check [ base [s] + ec ] != s ) {
         /* note : no meta class as of now */
-        s = def [s];
+        /*
+        .. assumes next[c] is empty if number of fallbacks reaches
+        .. LXR_MAXDEPTH
+        */
+        s = depth++ == LXR_MAXDEPTH ? -1 : def [s];
       }
       if ( s != -1 )
         s = next [base[s] + ec];

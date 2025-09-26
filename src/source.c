@@ -144,11 +144,6 @@ static size_t lxrsize = 1;                     /* current buff size */
   .. range [0x00, 0xFF]. Exception : EOF (-1).
   */
   int lxr_input () {
-    /*
-    .. Note : lxrBGNstatus, lxrENDstatus are available even before
-    .. lxr_input (). Thus you can get boundary information without
-    .. consuming.
-    */
 
     /*
     .. In case next character is unknown, you have to expand/renew the
@@ -159,21 +154,27 @@ static size_t lxrsize = 1;                     /* current buff size */
       lxr_buffer_update ();
 
     /*
-    .. return '\0' (equivalent to EOF) without consuming, so you can
-    .. lxr_input () any number of times, each time returning '\0'.
-    .. Note : byte 0x00 is not expected in the source code. So
-    .. encountering it might cause unexpected behaviour. !!
+    .. A character in (0x00, 0xFF]
     */
     if (*lxrbptr)
       return (int) (lxrprevchar = *lxrbptr++);
       
+    /*
+    .. return EOF without consuming, so you can call lxr_input () any
+    .. number of times, each time returning EOF. 
+    */
     if (lxrbptr [1] == '\0')
-      return '\0';                                           /* EOF */
+      return EOF;
 
+    /* 
+    .. Found an unexpected 0xff !! in the source file. It's behaviour
+    .. with the automaton depends on the pattern. Eventhough 0xff are
+    .. not expected in utf8 files, you may still encounter them if
+    .. any corruption happened. 
+    */
     return  
-      (int) (lxrprevchar = *lxrbptr++);       /* unexpected 0xff !! */
+      (int) (lxrprevchar = *lxrbptr++);
 
-    /* LXR_BDRY (); */
 
   }
 

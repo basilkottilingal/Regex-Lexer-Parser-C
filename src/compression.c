@@ -33,6 +33,13 @@
 typedef struct Delta {
   int c, delta;
 } Delta;
+
+/*
+typedef struct SetComp {
+  int ab, a_b, b_a;  
+} SetComp;
+*/
+
 static int * check;                                  /* check array */
 static int * next;                                    /* next array */
 static int * base;                                    /* base array */
@@ -87,7 +94,7 @@ void debug (Row * r, int ps, Delta residual []) {
   for (int i=0; i<nk;++i)
     printf("(%d,%d) ", residual[i].c, residual[i].delta);
   printf ("}");
-  //return n;                                    /* size of residual. */
+  //return n;                                  /* size of residual. */
 }
 #endif
 
@@ -129,7 +136,7 @@ int row_insert ( Row * r, int ps, Delta residual [] ) {
 }
 
 /*
-.. How similar are two rows
+.. Compare two sets, find intersection and set differences
 */
 static inline
 int row_similarity ( Row * r, Row * c ) {
@@ -178,7 +185,8 @@ int row_similarity ( Row * r, Row * c ) {
 static int compare ( const void * a, const void * b ) {
   #define CMP(p,q) cmp = ((int) (p > q) - (int) (p < q));            \
     if (cmp) return cmp
-  Row * s = *((Row **)a), * r = *((Row **)b);
+  //Row * s = *((Row **)a), * r = *((Row **)b);
+  Row * r = *((Row **)a), * s = *((Row **)b);
   int cmp;                  /* sort by                              */
   CMP (r->n, s->n);         /* number of transitions (decreasing)   */
   CMP (s->hash, r->hash);   /* Compare signature                    */
@@ -220,7 +228,7 @@ int rows_compression ( Row ** rows, int *** tables,
   Delta residual [256];
 
   /*
-  .. sort the rows by decreasing number of entries, if it matches,
+  .. sort the rows by increasing number of entries, if it matches,
   .. then by increasing span
   */
   qsort (rows, m, sizeof (Row*), compare);
@@ -240,66 +248,92 @@ int rows_compression ( Row ** rows, int *** tables,
 
   memset ( check, EMPTY, limit * sizeof (int) );
 
-  int offset = 0;   Row * r;
-  for (int irow=0; (r = rows [irow]) != NULL; ++irow ) {
+  int offset = 0, strtindex = 0; Row * holdrow = NULL;
+  for (int niter = 0; niter < 2; ++niter ) {
 
-    if (offset + 2*n > limit)  /* resize next[] and check[] if reqd */
-      if (resize (k0)) {
-        error ("Table compression: Out of table size limit %d",
-          (int) PAGE_SIZE / sizeof (int));
-        return RGXOOM;
-      }
-
-    int s = r->s, jrow = irow - 1, nrows = 0, min = INT_MAX,
-      best = EMPTY, queue [2];
-    /*
-    .. We look among the rows that are already added, to see if 
-    .. it is a good candidate to be taken as the def[this state].
-    .. The best candidate is chosen by minimum of |residual|,
-    .. where residual is the set of transitions (c, delta) which are
-    .. not found in the cache of candidate.
-    */
-    while (jrow >= 0 && nrows++ < 8) {
-      queue [0] = rows [jrow]->s, queue [1] = def [queue [0]];
-      for (int iq =0; iq < 2 && queue [iq] != EMPTY; ++iq) {
-        int nres = row_candidate ( r, queue [iq], residual );
-        if (nres < min) { min = nres; best = queue [iq]; }
-      }
-      jrow --;
+    if (strtindex) {
+      holdrow = rows [strtindex];
+      rows [strtindex] = NULL;
     }
+    Row * r;
 
-    if ( best != EMPTY && min > r->n )
-      best = EMPTY;
+    for (int irow=0; (r = rows [irow]) != NULL; ++irow ) {
 
-    if ( best != EMPTY &&
-      ( rows [irow+1] != NULL && r->n > SMALL_THRESHOLD ) &&
-      ( min > (int) ((1.0 - PARENT_THRESHOLD) * r->n) ) &&
-      ( row_similarity (r, rows[irow+1]) > 
-        (int) (CHILD_THRESHOLD* r->n)) ) 
-    {
+      if (offset + 2*n > limit)   /* resize next[], check[] if reqd */
+        if (resize (k0)) {
+          error ("Table compression: Out of table size limit %d",
+            (int) PAGE_SIZE / sizeof (int));
+          return RGXOOM;
+        }
+
+      int s = r->s, jrow = irow - 1, nrows = 0, min = INT_MAX,
+        best = EMPTY, queue [2];
       /*
-      .. After looking for possible parent candidates, we look if
-      .. there are other rows further down (not yet added to check [])
-      .. which is very similar to this row. So we can skip splitting
-      .. this row. We use this, so there is no "def" chaining for
-      .. for those future rows.
+      .. We look among the rows that are already added, to see if 
+      .. it is a good candidate to be taken as the def[this state].
+      .. The best candidate is chosen by minimum of |residual|,
+      .. where residual is the set of transitions (c, delta) which are
+      .. not found in the cache of candidate.
       */
-      best = EMPTY;
-    }
+      while (jrow >= 0 && nrows++ < 16) {
+        queue [0] = rows [jrow]->s, queue [1] = def [queue [0]];
+        for (int iq =0; iq < 2 && queue [iq] != EMPTY; ++iq) {
+          int nres = row_candidate ( r, queue [iq], residual );
+          if (nres < min) { min = nres; best = queue [iq]; }
+        }
+        jrow --;
+      }
+
+      if ( best != EMPTY &&
+        ( rows [irow+1] != NULL && r->n > SMALL_THRESHOLD ) &&
+        ( min > (int) ((1.0 - PARENT_THRESHOLD) * r->n) ) &&
+        ( row_similarity (r, rows[irow+1]) > 
+          (int) (CHILD_THRESHOLD* r->n)) ) 
+      {
+        /*
+        .. After looking for possible parent candidates, we look if
+        .. there is a row further down (not yet added to check[])
+        .. which is very similar to this row. So we can skip splitting
+        .. this row. We use this, so there is no "def" chaining for
+        .. for those future rows.
+        */
+        best = EMPTY;
+
+        /*
+        .. What we do here is we clear the check and next table and
+        .. insert all the rows in [0, strtindex) in the next iteration
+        .. (niter == 1). Why we do is that because, shorter rows like
+        .. that in [0, strindex) are easier to place in the gaps.
+        */
+        if (!strtindex) {
+          /* We will insert the rows in [0, strindex) in next itern*/
+          strtindex = irow + 1;
+          memset (check, EMPTY, (offset + n) * sizeof (int)); 
+          memset (next, 0, (offset + n) * sizeof (int));
+        }
+      }
 
 
-    /*
-    .. We set the def [], and accept [] token of this state
-    .. check[], base[] and next[] will be set inside "row_insert()".
-    */
-    def [s] = best;
-    accept [s] = r->token;
-    int loc = row_insert ( r, best, residual );
-    if (loc == RGXERR) {
-      error ("table compression : internal error");
-      return RGXERR;
+      /*
+      .. We set the def [], and accept [] token of this state
+      .. check[], base[] and next[] will be set inside "row_insert()".
+      */
+      def [s] = best;
+      accept [s] = r->token;
+      int loc = row_insert ( r, best, residual );
+      if (loc == RGXERR) {
+        error ("table compression : internal error");
+        return RGXERR;
+      }
+      if (loc > offset) offset = loc;
     }
-    if (loc > offset) offset = loc;
+
+    if (!strtindex)
+      break;
+  }
+    
+  if (strtindex) {
+    rows [strtindex] = holdrow;
   }
 
   deallocate (rows, (m+1)*sizeof (Row*));

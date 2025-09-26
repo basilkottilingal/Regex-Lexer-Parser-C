@@ -18,6 +18,7 @@
 #define CHILD_THRESHOLD      0.9
 #define SMALL_THRESHOLD      5
 #define EMPTY                -1
+#define MAXDEPTH             1
 
 /*
 .. A row is a cache corresponding to a state 's', which stores a 
@@ -55,12 +56,18 @@ int row_candidate ( Row * r, int ps, Delta residual [] ) {
   while ( i-- >= 0) {
     int min = i >= 0 ? a[i].c : -1;
     while (c > min) {
-      int _s = ps;
-      while (_s != EMPTY && check [base [_s]+c] != _s){
-        _s =def [_s]; 
-      }
-      if ( _s != EMPTY && next [base [_s]+c] != EMPTY )
-        residual [n++] = (Delta) {c, EMPTY};
+      int _s = ps, depth = 1;
+
+      while (_s != EMPTY && check [base [_s]+c] != _s &&
+        /* This will work only if MAXDEPTH > 1*/
+        depth++ < MAXDEPTH ) 
+          _s = def [_s]; 
+
+      if ( _s != EMPTY && 
+        check [base [_s]+c] == _s &&
+        next [base [_s]+c] != EMPTY )
+          residual [n++] = (Delta) {c, EMPTY};
+
       c--;
     }
     if (i < 0) break;

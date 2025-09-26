@@ -71,22 +71,8 @@ int row_candidate ( Row * r, int ps, Delta residual [] ) {
   return n;                                    /* size of residual. */
 }
 
+#if 0
 void debug (Row * r, int ps, Delta residual []) {
-/*
-  int ts [100];
-  int n = 0, i = r->n, 
-    * chk = & check [base [ps]],
-    * nxt = & next [base [ps]];
-  printf ("\np ");
-  for (int j=0; j<nclass;++j) {
-    int s = ps;
-    while ( s!= -1 && chk[c] != -1) s = def[s];
-    printf ("%2d ", s == -1 ? -1 : nxt [s]);
-  }
-  while (i--){
-  }
-*/
-  
 
   if(ps == EMPTY) return;
   int nk = row_candidate (r, ps, residual);
@@ -96,6 +82,7 @@ void debug (Row * r, int ps, Delta residual []) {
   printf ("}");
   //return n;                                    /* size of residual. */
 }
+#endif
 
 /*
 .. Look for a slot to insert a cache of (c, δ (s,c))
@@ -307,70 +294,6 @@ int rows_compression ( Row ** rows, int *** tables,
     }
     if (loc > offset) offset = loc;
   }
-#if 0
-do {
-  Row ** row = rows;
-  while ( (r = *row++) != NULL) {
-    printf ("\n[%2d] {  ", r->s);
-    Delta * d = (Delta *) r->stack;
-    for (int i=0; i<r->n; ++i,++d) {
-      printf ("(%2d|%2d), ", d->c, d->delta);
-      if (i %10 == 9) printf("\n        ");
-    }
-    printf ("}");
-  }
-
-  for (int s=0; s<nstates; ++s) {
-    printf ("\n[%2d] {  ", s);
-    int k=0;
-    for (int c=0; c<nclass; ++c) {
-      int ps = s;
-      while (ps != -1 && check [base [ps] +c] != ps) {
-        //printf ("<%d|%d|%d|%d>", ps, c, base[ps], def[ps]);
-        ps = def[ps];
-      }
-      if (ps == -1 || next [base [ps]+c] == -1) continue;
-      printf ("(%2d|%2d), ", c, next [base [ps] + c]);
-      if (k++ %10 == 9) printf("\n        ");
-    }
-    printf ("}");
-  }
-
-} while (0);
-
-do {
-int * class = tables [0][6];
-char sample[] = "\"main\"()";
-    int c, ec, s = 0,                             /* state iterator */
-      acc_token = 0,                         /* last accepted token */
-      acc_len = 0,             /* length of the last accepted state */
-      len = 0;                   /* consumed length for the current */
-
-    /*
-    .. fixme : copy the content of lxr_input ()
-    */
-    while ( s != -1 && (c = sample [len++]) != '\0')  {
-    printf ("[%d%c], ", s, (char) c);
-
-      ec = class [c];
-
-      /* dfa transition by c */
-      while ( s != -1 && check [ base [s] + ec ] != s ) {
-printf ("<%d, %d>", s, ec);
-        /* note : no meta class as of now */
-        s = def [s];
-      }
-      if ( s != -1 )
-        s = next [base[s] + ec];
-
-      if ( s != -1 && accept [s] ) {
-        acc_len = len;
-        acc_token = accept [s];
-      }
-    }
-    printf ("Len matched %d", len-1);
-} while (0);
-#endif
 
   deallocate (rows, (m+1)*sizeof (Row*));
 

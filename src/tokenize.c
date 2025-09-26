@@ -1,7 +1,7 @@
 /*
 .. table based tokenizer. Assumes,
 .. (a) state '0' is the starting dfa.
-.. (b) There is no zero-length tokens,
+1
 .. (c) maximum depth of 1 for "def" (fallback) chaining.
 .. (d) Doesn't use meta class.
 .. (e) Token value '0' : rejected. No substring matched
@@ -11,6 +11,9 @@
 static char lxrholdchar = '\0';
 
 int lxr_lex () {
+
+  int isEOF = 0;
+
   do {
 
     *lxrstrt = lxrholdchar;       /* put back the holding character */
@@ -19,15 +22,23 @@ int lxr_lex () {
       acc_token = 0,                         /* last accepted token */
       acc_len = 0,             /* length of the last accepted state */
       len = 0;                   /* consumed length for the current */
-      LXR_BDRY ();
 
     /*
-    .. fixme : copy the content of lxr_input ()
+    .. fixme : if(BOL), do the transition here. ec [BOL] = 0;
+    .. fixme : copy the content of lxr_input (), rather than calling
+    .. lxr_input ();
     */
     while ( s != -1 )  {
-      ++len;
 
-      c = lxr_input (); ec = class [c];
+      c = lxr_input ();
+      if (c == EOF) { if (!len) isEOF = 1; break; }
+      ec = class [c];
+    
+      /*
+      .. fixme : if(EOL/EOF), do the transition here. ec [EOL] = 1;
+      */
+
+      ++len;
 
       /* dfa transition by c */
       while ( s != -1 && check [ base [s] + ec ] != s ) {
@@ -36,7 +47,6 @@ int lxr_lex () {
       }
       if ( s != -1 )
         s = next [base[s] + ec];
-      
 
       if ( s != -1 && accept [s] ) {
         acc_len = len;
@@ -69,11 +79,14 @@ int lxr_lex () {
         /*% replace this line with "case <token> : <action> break; %*/
 
         default :                                /* Unknown pattern */
+          /*% if (isEOF) replace this line with any snippet reqd   %*/
       }
     } while (0);
+
+    /* Place reading idx just after the last character of the token */
     lxrbptr = lxrstrt = lxrholdloc;
 
-  } while (lxrholdchar != '\0');/* warning: fails for 0x00 byte too */
+  } while (!isEOF);    /* Will stop when the first character is EOF */
 
   return EOF;
 }

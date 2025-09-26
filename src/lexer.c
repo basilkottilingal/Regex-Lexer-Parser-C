@@ -254,11 +254,11 @@ int lexer_tail (FILE * out, Stack * actions) {
     fprintf (out,
       "\n      case %d :"
       "\n        printf (\"\\ntoken %%s\", lxrstrt);"
-      "\n        break;", i);
+      "\n        break;", i+1);
     #else
     fprintf (out,
       "\n      case %d :"
-      "\n    %s\n        break;",  i,  action [i]);
+      "\n    %s\n        break;",  i+1,  action [i]);
     #endif
   }
 

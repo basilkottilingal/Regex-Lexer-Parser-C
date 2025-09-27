@@ -39,6 +39,7 @@ static int rgx_input ( char ** str ) {
 
 static int token[3] = {0};
 static int charclass = 0;
+static int is_EOL = 0;
 
 /*
 .. We break down the regex to tokens of
@@ -67,7 +68,6 @@ int rgx_token ( char ** str ) {
   #define  RGXNXT(_s_)  RGXCHR(*(*_s_))
   #define  ISBOL()      ( token [0] == 0 ||                          \
                 token [0] == RGXOP ('(') || token [0] == RGXOP ('|') )
-  #define  ISEOL()      ( RGXCHR (* (*str) ) == EOF ) 
   #define  HEX(_c_)     ((_c_ >= '0' && _c_ <= '9') ? (_c_ - '0') :  \
                    (_c_ >= 'a' && _c_ <= 'f') ? (10 + _c_ - 'a') :   \
                    (_c_ >= 'A' && _c_ <= 'F') ? (10 + _c_ - 'A') : 16)
@@ -126,19 +126,39 @@ int rgx_token ( char ** str ) {
       .. patterns ()(?...) are not yet implemented
       */
       ERR ( TOKEN() == RGXOP(')') && RGXNXT(str) == '?' );
-    case ')' : case '|' : case '$' :
     case '.' : case '+' : case '*' :
+    case ')' : case '|' :
       RTN ( charclass ? c : RGXOP(c) );
     case '^' :
       /*
-      .. '^' in the following cases are taken as anchor 
-      .. ^[A-Z][a-z]{1,}
-      .. (^|[ \t])SAM
-      .. ([ \t]|^)hello
+      .. '^' in the following cases are taken as anchor
+      .. ^Sam
+      .. ([ \t]|^)Sam
+      .. (^|[ \t])Sam
       .. i.e when '^' is encountered @ the beginning of the rgx,
       .. or soon after '|' or '(' operators.
       */
       RTN ( ISBOL() ? RGXOP ('^') : '^' );
+    case '$' :
+      if (charclass) RTN (c);
+      /*
+      .. '$' in the following cases are taken as EOL/EOF anchor
+      .. Hello$
+      .. Hello($|[ \t])
+      .. Hello([ \t]|$)
+      .. i.e when '$' is encountered @ the end of the rgx,
+      .. or just before '|' or ')' operators.
+      */
+      {
+        int nxt = RGXNXT (str);
+        if (nxt == EOF) {
+          is_EOL = 1;
+          RTN (RGXOP (c));
+        }
+        if (nxt == '|' || nxt == ')')
+          RTN (RGXOP (c));
+      }
+      RTN (c);
     case '?' :
       RTN ( charclass ? c : RGXOP(c) );
     case '-' :
@@ -166,10 +186,12 @@ int rgx_token ( char ** str ) {
           ++ndigits, val = val*10 + (c-'0');
         }
       }
-      /* Errors: {n,m,}, {}, {,}, {n,m} with m<n.
-      .. {0}, {0,0}, {,0} will be simply omitted */
-      ERR ( !nread || r[1] < r[0] );
-      RTN ( !r[1] ? rgx_token (str) : RGXOP('{') );
+      /*
+      .. Following are considered errors:
+      .. {0}, {0,0}, {,0}, {n,m,}, {}, {,}, {n,m} with m<n.
+      */
+      ERR ( !nread || r[1] < r[0] || !r[1] );
+      RTN ( RGXOP('{') );
     default :
       RTN (c);
   }
@@ -223,29 +245,38 @@ int rgx_rpn ( char * s, int * rpn ) {
        (stack.a[stack.n-1] = RGXOOM) : (stack.a[stack.n++] = RGXERR) )
 
   char ** rgx = &s;
-  int queued[4], RGXOPS[RGXSIZE], op, last = RGXBGN;
+  int queued[4],
+      RGXOPS[RGXSIZE],
+      op, last = RGXBGN;
+
   iStack ostack = STACK (RGXOPS, RGXSIZE),
     stack = STACK (rpn, RGXSIZE),
     queue = STACK (queued, 4);
-  token [0] = 0;                    /* Signify last token was empty */
 
+  token [0] = 0;                    /* Signify last token was empty */
+  is_EOL = 0;
+
+  /*
+  .. If the rgx doesn't have a BOL anchor requirement, like in ^abc,
+  .. we add BOL as optional. Example for pattern abc, we modify it
+  .. as ^?abc
+  */
   if ( s[0] != '^' ) {
-    /*
-    .. If the rgx doesn't have a BOL anchor requirement, like in ^abc
-    .. we add BOL as optional. Example for pattern abc, we modify it
-    .. as ^?abc
-    */
-    queued [0] = RGXOP ('?'), queued [1] = RGXOP ('^'); queue.n = 2;
+    queued [0] = RGXOP ('?');
+    queued [1] = RGXOP ('^');
+    queue.n = 2;
   }
 
   while ((op = queue.n ? queue.a[--queue.n] : rgx_token (rgx)) >= 0) {
     if ( ISRGXOP (op) ) {
       switch ( op & 0xFF ) {
-        /*
-        .. Character groups . Not yet implemented
-        */
-        case 'd' : case 's' : case 'w' :
-        case 'D' : case 'S' : case 'W' :
+
+        case 'd' :
+        case 's' :
+        case 'w' :
+        case 'D' :
+        case 'S' :           /* Character groups d, D. s, S, w, W ..*/
+        case 'W' :           /* .. Not yet implemented              */
         case '.' :
           if ( last & (RGXOPD | RGXOPN) ) {
             PUSH (queue, op);
@@ -255,36 +286,36 @@ int rgx_rpn ( char * s, int * rpn ) {
           OPERAND (op);
           break;
 
-        /*
-        .. Unary operators which are already postfix in regex.
-        */
-        case '*' : case '?' : case '+' :
+        case '*' :              /* Quantifiers (unary operators) .. */
+        case '?' :              /* .. '+', '?', '*'                 */
+        case '+' :
           ERR ( !(last & (RGXOPD | RGXOPN)) );
           OPERATION (op);
           break;
-        case '{' :
+
+        case '{' :         /* Quantifier x{m,n}, x{n}, x{m,}, x{,n} */
           ERR ( !(last & (RGXOPD | RGXOPN)) );
           int n = token [1], m = token [2];
-          /* encode as q{m,n}. q : placeholder */
-          OPERATION (RGXOP('q'));
+          OPERATION (RGXOP('q'));        /* we encode it as q{m,n}. */
           OPERATION (op); OPERATION (n);
           OPERATION (m);  OPERATION (RGXOP ('}'));
           break;
 
-        /*
-        .. Non-consuming, boundary assertion patters
-        */
-        case '^' :
+        case '^' :                             /* Starting anchor ^ */
           OPERAND (op);
           break;
+
         case '$' :
+          if ( last & (RGXOPD | RGXOPN) ) {
+            PUSH (queue, op);
+            PUSH (queue, RGXOP(charclass ? ',' : ';'));
+            continue;
+          }
+          OPERAND (op);
           break;
 
-        /*
-        .. Groupings [ ], ( ) and < >  ( < > is replacement for [^] )
-        */
-        case '[' :
-        case '<' :
+        case '[' :         /* Groupings. Character class [] opening */
+        case '<' :    /* Negated Character Class [^] encoded as < > */
         case '(' :
           if ( last & (RGXOPD | RGXOPN) ) {
             PUSH (queue, op);
@@ -295,12 +326,10 @@ int rgx_rpn ( char * s, int * rpn ) {
             PUSH (stack, op);               /* creates a char stack */
           OPERATOR ( op ); /* keept it until you find closing ],>,) */
           break;
+
         case '>' :
         case ']' :
         case ')' :
-          /*
-          .. '>' = '<' + 2, ']' = '[' + 2, ')' = '(' + 1
-          */
           int c = op - 2 + (op == RGXOP(')'));
           for (int i=0; i<2 && ( TOP (ostack) != c ); ++i)
             PUSH (stack, POP (ostack));
@@ -340,6 +369,10 @@ int rgx_rpn ( char * s, int * rpn ) {
       }
     }
     else {
+      /*
+      .. Input in [0x00, 0xFF]. Add the implicit append operator
+      .. before adding the literal
+      */
       if ( last & (RGXOPD | RGXOPN) ) {
         PUSH (queue, op);
         PUSH (queue, RGXOP(charclass ? ',' : ';'));
@@ -350,16 +383,29 @@ int rgx_rpn ( char * s, int * rpn ) {
   }
 
   if ( op == RGXEOE ) {
+    /*
+    .. We can expect a maximum of two operators waiting in the
+    .. ostack. Anything more than 2 is unexpected, because their
+    .. corresponding operand are not found in the regex pattern
+    */
     for (int i=0; i<2 && TOP (ostack); ++i)
       PUSH (stack, POP(ostack));
     if (ostack.n) {
       error ("rgx rpn : missing operand");
       ERR (1);
     }
+
+    /*
+    .. Encode EOF as the end of RPN and return the length of
+    .. characters found in the regex
+    */
     PUSH (stack, RGXEOE);
-    return *rgx - s;  /* returns length of characters in regex */
+    return *rgx - s; 
   }
 
+  /*
+  .. Unexpected pattern found in the regex
+  */
   error ("rgx rpn : wrong expression ");
   PUSH (stack, op);
   return RGXERR;

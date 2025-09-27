@@ -2,7 +2,6 @@
 /\*           { ast->loc.column += 2; comment(ast); }
 //.*\n        { /* fixme : it should be //.*$  Neglect */ }
 
-
 auto         { _TOKEN_(AUTO); }
 break        { _TOKEN_(BREAK); }
 case         { _TOKEN_(CASE); }
@@ -48,7 +47,6 @@ _Noreturn                           { _TOKEN_(NORETURN); }
 _Static_assert                      { _TOKEN_(STATIC_ASSERT); }
 _Thread_local                       { _TOKEN_(THREAD_LOCAL); }
 __func__                            { _TOKEN_(FUNC_NAME); }
-
 
 [a-zA-Z_][a-zA-Z_0-9]*                             { _TOKEN_IDENTIFIER_(); }
 

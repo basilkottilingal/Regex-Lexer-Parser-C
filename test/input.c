@@ -9,7 +9,7 @@ int main () {
   lxrin_set (fp);
 
   int c;
-  while ( (c = lxr_input ()) != '\0' ) {
+  while ( (c = lxr_input ()) != EOF ) {
     printf ("%c", (char) c);
   };
 

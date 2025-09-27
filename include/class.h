@@ -11,7 +11,7 @@
   .. and end of line
   */
 
-  #define BOL_CLASS  0
-  #define EOL_CLASS  1
+  #define BOL_CLASS  (nclass - 2)
+  #define EOL_CLASS  (nclass - 1)
 
 #endif

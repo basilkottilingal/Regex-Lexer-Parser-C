@@ -396,6 +396,16 @@ int rgx_rpn ( char * s, int * rpn ) {
     }
 
     /*
+    .. We append the optional EOL transtion @ the end
+    .. fixme : use flags rather.
+    if (!is_EOL) {
+      PUSH (stack, RGXOP ('$'));
+      PUSH (stack, RGXOP ('?'));
+      PUSH (stack, RGXOP (';'));
+    }
+    */
+
+    /*
     .. Encode EOF as the end of RPN and return the length of
     .. characters found in the regex
     */

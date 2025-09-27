@@ -62,6 +62,7 @@ static DState * dfa_root ( State * nfa, int nnfa ) {
 
   State ** buff[RGXSIZE];
   int status = states_at_start ( nfa, list, buff );
+
   if (status < 0) { RTN (NULL); }
 
   nstates = 0;                   /* fixme : Cleaned previous nodes? */
@@ -164,11 +165,13 @@ rgx_dfa_tree ( DState * root, Stack ** Qptr ) {
 static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
   /*
-  .. New dfa set Q' from P.
-  ..(b) Identifying accepting states of Q'. Lowest token number
-  ..     will be assigned to q->flag for all q in Q'.
-  ..     ( Assumes : lower the itoken, more the precedence )
+  .. Converting Partition P(Q) (which is a bit set representation) to
+  .. a new DFA table Q' and store it in the global cache states [].
+  .. Also, identifying accepting states of Q'. Lowest token number
+  .. will be assigned to q->flag for all q in Q'.
+  .. ( Assumes : lower the itoken, more the precedence )
   */
+
   uint64_t i64, ** bitstack = (uint64_t **) P->stack, * Y;
   int nq = Q->len/sizeof (void *), np = P->len/sizeof (void *),
     qsize = BITBYTES (nq);
@@ -178,9 +181,26 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
     ** q = (DState **) Q->stack;                /* original dstates */
   Stack * cache = stack_new (0);       /* stacking pointers of q[i] */
 
-  int reserved = -1;
+  /*
+  .. We reserved states [0] for root DFA node, and states [1] node for
+  .. state that satisfy BOL condition (in case string start with a
+  .. BOL flag. Inorder to do that we do a mapping 
+  .. { root DFA :0, root BOL DFA : 1, others : [2,np-1] }
+  */
+  int * map = allocate (np * sizeof (int)), mapindex = 2, bol = 
+    q [nq-1]->next [BOL_CLASS] ? q [nq-1]->next [BOL_CLASS]->i : -1;
+  if (bol == -1) {
+    error ("warning : Non-anchored pattern should start with ^?"
+      ".\nCannot find single BOL edge for root DFA");
+    return RGXERR;
+  }
+  memset (map, -1, np * sizeof (int));
 
+  /*
+  .. Allocating Mempry for q[i] and assigning values.
+  */  
   for (int j=0; j<np; ++j) {                  /* each j in [0, |P|) */
+
     d = allocate (sizeof (DState));                    /* p[j] in P */
     int tkn = 0;
 
@@ -195,9 +215,20 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
         child = q [bit|base];
         if (child->i == nq-1) {   /* root dfa is the TOP of Q stack */
           *dfa = d;                  /* root of the new DFA tree Q' */
-          reserved = j;
+          map [j] = 0;
         }
-        child->i = j;          /* from now 'i' map each q[i] to p[j]*/
+        else if (child->i == bol)
+          map [j] = 1;
+        else if (map [j] == -1) {
+          if (mapindex == np) {
+            error ("Wrong dfa mapping to states [] cache"
+              ".\nInternal error");
+            return RGXERR;
+          }
+          map [j] = mapindex++;
+        }
+
+        child->i = map [j];    /* from now 'i' map each q[i] to p[j]*/
         stack_push (cache, child);                  /* Cache of q[i]*/
         stack_free (child->bits); child->bits = NULL;
         if (RGXMATCH (child))
@@ -210,48 +241,45 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
     /*
     .. Where to place this dfa in states [] array.
     .. states [0] is reserved for root/start DFA.
+    .. states [1] is reserved for root/start DFA that satisfy BOL
     */
-    int loc = (reserved == -1) ? j+1 : (reserved == j) ? 0 : j;
-
     *d = (DState) {
       .list = stack_copy (cache),
-      .i    = loc,
+      .i    = map [j],
       .flag = tkn,
       .next = allocate (nclass * sizeof (DState *))
     };
-    p [loc] = d;
+    p [ map[j] ] = d;
   }
-
   stack_free (cache);
 
-  if(reserved == -1) {
-    error ("Cannot locate root DFA!! Internal error");
+  /*
+  .. Internal check to see if root DFA and root BOL DFA are
+  .. located?
+  */
+  if ( p[0] == NULL || p[1] == NULL || mapindex < np ) {
+    error ("DFA Internal error : failed mapping.");
     return RGXERR;
   }
 
   /*
   .. (b) Creating the transition for each p[i]
   */
-
-  int c, n, m, oldindx;
+  int c, n, m;
   for (int j=0; j<np; ++j) {
     d = p[j];
     cache = d->list;
     DState ** s = (DState **) cache->stack;
     n = cache->len / sizeof (void *);
     next = d->next;
+
     while (n--) {
       State ** nfa = (State **) s[n]->list->stack;
       m = s[n]->list->len / sizeof (void *);
       while (m--)
         if ( (c = nfa[m]->id) < 256 && c >= 0 && !next[c] ) {
           if (s[n]->next[c] == NULL) return RGXERR;
-          oldindx = s[n]->next[c]->i;
-          /*
-          .. index 0 in states[] array is reserved for start DFA
-          */
-          next[c] = p [ oldindx == reserved ? 0 :
-            oldindx < reserved ? oldindx + 1 : oldindx ];
+          next[c] = p[ s[n]->next[c]->i ];
         }
       stack_free (s[n]->list); s[n]->list = NULL;
     }
@@ -260,8 +288,8 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
 
   /*
   .. Set global variables.
-  .. (a) final cache of minimzed DFA
-  .. (b) size
+  .. (a) states : final cache of minimzed DFA
+  .. (b) nstates : |states|
   */
   states = p;
   nstates = np;
@@ -590,10 +618,25 @@ int dfa_tables (int *** tables, int ** tsize) {
   .. non-consuming token will run the lexing function
   .. infinitely
   */
-  if ( RGXMATCH (states[0]) ) {
+  if ( RGXMATCH (states[0]) || RGXMATCH (states[1]) ) {
     error ("zero length token not allowed");
     return RGXERR;
   }
+
+  /*
+  .. Since we know the state which corresponds to BOL is states [1],
+  .. we switch off the transition from 0->1 by BOL_CLASS.
+  */
+  states [0]->next [ BOL_CLASS ] = NULL;
+
+  #if 0  
+  int bol = 
+    states[0]->next [BOL_CLASS] ? states[0]->next [BOL_CLASS]->i : -1;
+  printf ("\nstate after BOL transition %d", bol);
+  if (bol != -1) {
+    printf ("\n BOL accept %d", RGXMATCH (states[bol]));
+  }
+  #endif
 
   int ** t = * tables = allocate ( 7 * sizeof (int *) );
   int * len = * tsize = allocate ( 7 * sizeof (int) );

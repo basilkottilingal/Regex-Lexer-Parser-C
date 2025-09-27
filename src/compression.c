@@ -310,7 +310,7 @@ int rows_compression ( Row ** rows, int *** tables,
         if (!niter) {
           prevlimit = irow;
           /* We will insert the rows in [0, strindex) in next itern*/
-          strtindex = irow + 1;
+          strtindex = irow;
           memset (check, EMPTY, (offset + n) * sizeof (int)); 
           memset (next, 0, (offset + n) * sizeof (int));
         }

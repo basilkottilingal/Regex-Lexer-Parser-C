@@ -299,20 +299,22 @@ int rows_compression ( Row ** rows, int *** tables,
         */
         best = EMPTY;
 
+        #if 1
         /*
         .. What we do here is we clear the check and next table, thus
-        .. remove ing the rows in [0, strtindex) out of the table &
+        .. removing the rows in [0, strtindex) out of the table &
         .. insert all the rows in [0, strtindex) in the next iteration
         .. (niter == 1). Why we do is that because, shorter rows like
         .. that in [0, strindex) are easier to place in the gaps.
         */
-        if (!strtindex) {
-          prevlimit =strtindex;
+        if (!niter) {
+          prevlimit = irow;
           /* We will insert the rows in [0, strindex) in next itern*/
           strtindex = irow + 1;
           memset (check, EMPTY, (offset + n) * sizeof (int)); 
           memset (next, 0, (offset + n) * sizeof (int));
         }
+        #endif
       }
 
 

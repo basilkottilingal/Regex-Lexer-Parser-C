@@ -157,7 +157,7 @@ static State * state ( int id, State * a, State * b ) {
 */
 static Fragment state_class ( int * classes, int cmp ) {
   int stack [256], n = 0;
-  for (int i=0; i<nclass; ++i)
+  for (int i=0; i<nclass-2; ++i)            /* BOL/EOL are exempted */
     if (classes[i] == cmp)
       stack [n++] = i;
 
@@ -386,11 +386,20 @@ int rpn_nfa ( int * rpn, State ** start, int itoken ) {
       switch ( (op &= 0XFF) ) {
         case 'd' : case 's' : case 'S' :
         case 'w' : case 'D' : case 'W' :
-        case '$' :
           /* Not yet implemented */
           return RGXERR;
         case '^' :
+          /*
+          .. Both the non-consuming boundary assertions '^' and '$'
+          .. are defined as transition triggered by inputs of eqvlnce
+          .. classes BOL_CLASS and EOL_CLASS respectively. class.h
+          .. has reserved class 0 and 1 for BOL & EOL_CLASS
+          */
           STT ( BOL_CLASS, NULL, NULL );
+          PUSH ( s, (Dangling *) (s->out) );
+          break;
+        case '$' :
+          STT ( EOL_CLASS, NULL, NULL );
           PUSH ( s, (Dangling *) (s->out) );
           break;
         case 'q' :

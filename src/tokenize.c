@@ -1,3 +1,5 @@
+
+
 /*
 .. table based tokenizer. Assumes,
 .. (a) state '0' is the starting dfa.

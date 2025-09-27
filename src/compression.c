@@ -251,12 +251,12 @@ int rows_compression ( Row ** rows, int *** tables,
   int offset = 0, strtindex = 0; Row * holdrow = NULL;
   for (int niter = 0; niter < 2; ++niter ) {
 
+    int prevlimit = 0;
     if (strtindex) {
       holdrow = rows [strtindex];
       rows [strtindex] = NULL;
     }
     Row * r;
-
     for (int irow=0; (r = rows [irow]) != NULL; ++irow ) {
 
       if (offset + 2*n > limit)   /* resize next[], check[] if reqd */
@@ -275,7 +275,7 @@ int rows_compression ( Row ** rows, int *** tables,
       .. where residual is the set of transitions (c, delta) which are
       .. not found in the cache of candidate.
       */
-      while (jrow >= 0 && nrows++ < 16) {
+      while (jrow >= prevlimit && nrows++ < 16) {
         queue [0] = rows [jrow]->s, queue [1] = def [queue [0]];
         for (int iq =0; iq < 2 && queue [iq] != EMPTY; ++iq) {
           int nres = row_candidate ( r, queue [iq], residual );
@@ -300,12 +300,14 @@ int rows_compression ( Row ** rows, int *** tables,
         best = EMPTY;
 
         /*
-        .. What we do here is we clear the check and next table and
+        .. What we do here is we clear the check and next table, thus
+        .. remove ing the rows in [0, strtindex) out of the table &
         .. insert all the rows in [0, strtindex) in the next iteration
         .. (niter == 1). Why we do is that because, shorter rows like
         .. that in [0, strindex) are easier to place in the gaps.
         */
         if (!strtindex) {
+          prevlimit =strtindex;
           /* We will insert the rows in [0, strindex) in next itern*/
           strtindex = irow + 1;
           memset (check, EMPTY, (offset + n) * sizeof (int)); 

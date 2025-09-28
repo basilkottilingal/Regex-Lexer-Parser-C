@@ -3,7 +3,7 @@
 /*
 .. table based tokenizer. Assumes,
 .. (a) state '0' is the starting dfa.
-1
+.. (b) There is no zero-length tokens,
 .. (c) maximum depth of 1 for "def" (fallback) chaining.
 .. (d) Doesn't use meta class.
 .. (e) Token value '0' : rejected. No substring matched
@@ -11,57 +11,73 @@
 */
 
 static char lxrholdchar = '\0';
+static int  lxrBOLstatus = 1;
 #define LXR_MAXDEPTH    1
+#define LXRDEAD        -1
 
 int lxr_lex () {
-
   int isEOF = 0;
 
-  do {
+  do {                  /* Loop looking the longest token until EOF */
 
-    *lxrstrt = lxrholdchar;       /* put back the holding character */
+    *lxrstrt = lxrholdchar; /* put back the holding character       */
 
-    int c, ec, s = 0,                             /* state iterator */
-      acc_token = 0,                         /* last accepted token */
-      acc_len = 0,             /* length of the last accepted state */
-      len = 0,                   /* consumed length for the current */
-      depth;                                   /* depth of fallback */
+    int uchar, class,       /* input character & it's class         */
+      state = lxrBOLstatus, /* start with 0/1 depending on BOL flag */
+      last_state = LXRDEAD, /* if EOL transition failed, go back    */
+      acc_token = 0,        /* last accepted token                  */
+      acc_len = 0,          /* length of the last accepted state    */
+      len = 0,              /* consumed length for the current      */
+      depth,                /* depth of fallback                    */
+      lxrEOLstatus = 
+        ( lxrbptr == lxrEOF ) || (*lxrbptr == '\n');
 
-    /*
-    .. fixme : if(BOL), do the transition here. ec [BOL] = 0;
-    .. fixme : copy the content of lxr_input (), rather than calling
-    .. lxr_input ();
-    */
-    while ( s != -1 )  {
+    do {                            /* Transition loop until reject */
 
-      c = lxr_input ();
-      if (c == EOF) { if (!len) isEOF = 1; break; }
-      ec = class [c];
-    
-      /*
-      .. fixme : if(EOL/EOF), do the transition here. ec [EOL] = 1;
-      */
+      if (lxrEOLstatus) {
+        class = lxrEOLclass; lxrEOLstatus = 0;
+        last_state = state;
+      }
+      else {
+        if ( lxrbptr[1] == '\0' && lxrEOF == NULL )
+          lxr_buffer_update ();
+        if (lxrbptr == lxrEOF) {
+          if (len == 0) isEOF = 1;
+          break;
+        }
+        uchar = (unsigned char) *lxrbptr++;
+        len++;
+        class = lxr_class [uchar];
+        lxrEOLstatus = ( lxrbptr == lxrEOF ) || (*lxrbptr == '\n');
+      }
 
-      ++len;
-
-      /* dfa transition by c */
-      depth = 0;
-      while ( s != -1 && check [ base [s] + ec ] != s ) {
-        /* note : no meta class as of now */
+      while ( state != LXRDEAD && 
+        ((int) lxr_check [lxr_base [state] + class] != state) ) {
         /*
-        .. assumes next[c] is empty if number of fallbacks reaches
-        .. LXR_MAXDEPTH
+        .. Note: (a) No meta class as of now. (b) assumes transition
+        .. is DEAD if number of fallbacks reaches LXR_MAXDEPTH
         */
-        s = depth++ == LXR_MAXDEPTH ? -1 : def [s];
+        state = (depth++ == LXR_MAXDEPTH) ? LXRDEAD : 
+          (int) lxr_def [state];
       }
-      if ( s != -1 )
-        s = next [base[s] + ec];
 
-      if ( s != -1 && accept [s] ) {
-        acc_len = len;
-        acc_token = accept [s];
+      if ( state != LXRDEAD ) {
+        state = (int) lxr_next [lxr_base[state] + class];
+        if ( state != LXRDEAD && lxr_accept [state] &&
+          ( len > acc_len || (int) lxr_accept [state] < acc_token) )
+        {
+          acc_len = len;
+          acc_token = (int) lxr_accept [state];
+        }
       }
-    }
+
+      /*
+      .. We proceed further after EOL
+      */
+      if (class == lxrEOLclass)
+        state = last_state;
+
+    } while ( state != LXRDEAD ); 
 
     /*
     .. Update with new holding character & it's location.
@@ -94,8 +110,11 @@ int lxr_lex () {
 
     /* Place reading idx just after the last character of the token */
     lxrbptr = lxrstrt = lxrholdloc;
+    lxrBOLstatus = (lxrholdloc [-1] == '\n');
 
   } while (!isEOF);    /* Will stop when the first character is EOF */
 
   return EOF;
 }
+
+#undef LXRDEAD

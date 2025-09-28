@@ -13,8 +13,6 @@
 
 static char * lxrEOF = NULL;
 static int lxrprevchar = '\n';          /* encode '\n' for '^' bdry */
-static int lxrBGNstatus = 1;
-static int lxrENDstatus = 0;
 static FILE * lxrin;
 
 extern void lxrin_set (FILE *fp) {
@@ -147,7 +145,7 @@ static size_t lxrsize = 1;                     /* current buff size */
     .. A character in (0x00, 0xFF]
     */
     if (*lxrbptr)
-      return (int) (lxrprevchar = *lxrbptr++);
+      return ( (unsigned char) (lxrprevchar = *lxrbptr++) );
       
     /*
     .. return EOF without consuming, so you can call lxr_input () any

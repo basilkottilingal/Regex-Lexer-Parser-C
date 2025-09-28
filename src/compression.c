@@ -34,12 +34,6 @@ typedef struct Delta {
   int c, delta;
 } Delta;
 
-/*
-typedef struct SetComp {
-  int ab, a_b, b_a;  
-} SetComp;
-*/
-
 static int * check;                                  /* check array */
 static int * next;                                    /* next array */
 static int * base;                                    /* base array */
@@ -185,7 +179,6 @@ int row_similarity ( Row * r, Row * c ) {
 static int compare ( const void * a, const void * b ) {
   #define CMP(p,q) cmp = ((int) (p > q) - (int) (p < q));            \
     if (cmp) return cmp
-  //Row * s = *((Row **)a), * r = *((Row **)b);
   Row * r = *((Row **)a), * s = *((Row **)b);
   int cmp;                  /* sort by                              */
   CMP (r->n, s->n);         /* number of transitions (decreasing)   */
@@ -228,8 +221,9 @@ int rows_compression ( Row ** rows, int *** tables,
   Delta residual [256];
 
   /*
-  .. sort the rows by increasing number of entries, if it matches,
-  .. then by increasing span
+  .. Sort the rows by increasing number of entries. Group rows with
+  .. same signature together. Signature is evaluated from the last and
+  .. first entry of cache.
   */
   qsort (rows, m, sizeof (Row*), compare);
 

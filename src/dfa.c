@@ -176,28 +176,29 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
   int nq = Q->len/sizeof (void *), np = P->len/sizeof (void *),
     qsize = BITBYTES (nq);
   DState * d, ** next, * child,                        /* iterators */
-    ** p =  (hsize < np) ? allocate ( np * sizeof (DState *) ) :
-      memset ( htable, 0, np * sizeof (DState *) ), /* reuse htable */
-    ** q = (DState **) Q->stack;                /* original dstates */
+    ** q = (DState **) Q->stack,             /* original dfa states */
+    ** p =  (hsize < np) ?                        /* new dfa states */
+    allocate ( np * sizeof (DState *) ) :
+    memset ( htable, 0, np * sizeof (DState *) );   /* reuse memory */
   Stack * cache = stack_new (0);       /* stacking pointers of q[i] */
 
   /*
   .. We reserved states [0] for root DFA node, and states [1] node for
-  .. state that satisfy BOL condition (in case string start with a
-  .. BOL flag. Inorder to do that we do a mapping 
+  .. root DFA that satisfy BOL condition (in case string start with a
+  .. BOL flag). Inorder to do that we do a mapping 
   .. { root DFA :0, root BOL DFA : 1, others : [2,np-1] }
   */
   int * map = allocate (np * sizeof (int)), mapindex = 2, bol = 
     q [nq-1]->next [BOL_CLASS] ? q [nq-1]->next [BOL_CLASS]->i : -1;
   if (bol == -1) {
-    error ("warning : Non-anchored pattern should start with ^?"
-      ".\nCannot find single BOL edge for root DFA");
+    error ("warning : Non-anchored pattern should start with ^?.\n"
+      ".. Cannot find single BOL edge for root DFA");
     return RGXERR;
   }
   memset (map, -1, np * sizeof (int));
 
   /*
-  .. Allocating Mempry for q[i] and assigning values.
+  .. Allocating Memory for q[i] and assigning values.
   */  
   for (int j=0; j<np; ++j) {                  /* each j in [0, |P|) */
 
@@ -221,8 +222,8 @@ static int dfa_minimal ( Stack * Q, Stack * P, DState ** dfa ) {
           map [j] = 1;
         else if (map [j] == -1) {
           if (mapindex == np) {
-            error ("Wrong dfa mapping to states [] cache"
-              ".\nInternal error");
+            error ( "Wrong dfa mapping to states [] cache.\n"
+              ".. Internal error");
             return RGXERR;
           }
           map [j] = mapindex++;
@@ -566,7 +567,7 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 /* ...................................................................
 .. ...................................................................
 .. ........  Algorithms related to table compression .................
-.. ...................................................................
+.. .............. coninued in src/compression.c ......................
 .. .................................................................*/
 #include "compression.h"
 

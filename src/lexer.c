@@ -205,8 +205,9 @@ int lxr_grammar ( FILE * in, Stack * rgxs, Stack * actions ) {
 }
 
 /*
-.. Copy the "head" part of the lexer generator
-.. from src/source.c
+.. Copy the "head" part of the lexer generator from src/source.c.
+.. Main input function lxr_input () and buffer handling are defined
+.. here.
 */
 int lexer_head ( FILE * out ) {
   char buf[BUFSIZ];
@@ -225,6 +226,11 @@ int lexer_head ( FILE * out ) {
 }
 
 #define LXR_DEBUG
+
+/*
+.. Copy the content from src/tokenize.c which define the main lexing
+.. function lxr_lex ().
+*/
 int lexer_tail (FILE * out, Stack * actions) {
   char buf[BUFSIZ];
   FILE *in = fopen("../src/tokenize.c", "r");
@@ -341,7 +347,7 @@ int lxr_generate (FILE * in, FILE * out) {
   for (int i=0; i<7; ++i) {
     int * arr = tables [i], l = len [i];
     if (!arr) continue;
-    fprintf ( out, "\n\nstatic %s %s [%d] = {\n",
+    fprintf ( out, "\n\nstatic %s lxr_%s [%d] = {\n",
       type [i], names[i], l );
     for (int j=0; j<l; ++j) {
       fprintf ( out, " %4d%s", arr[j], j == l-1 ? "" : ",");
@@ -350,6 +356,9 @@ int lxr_generate (FILE * in, FILE * out) {
     }
     fprintf ( out, "\n};" );
   }
+   
+  int nclass = len [5]; 
+  fprintf ( out, "\n#define lxrEOLclass  %d", EOL_CLASS);
 
   /*
   .. write the main lexer function which executes appropriate

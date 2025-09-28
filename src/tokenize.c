@@ -51,6 +51,7 @@ int lxr_lex () {
         lxrEOLstatus = ( lxrbptr == lxrEOF ) || (*lxrbptr == '\n');
       }
 
+      depth = 0;
       while ( state != LXRDEAD && 
         ((int) lxr_check [lxr_base [state] + class] != state) ) {
         /*

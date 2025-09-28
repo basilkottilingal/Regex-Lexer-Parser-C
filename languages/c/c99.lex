@@ -1,6 +1,6 @@
 
 /\*           { ast->loc.column += 2; comment(ast); }
-//.*\n        { /* fixme : it should be //.*$  Neglect */ }
+//.*$        { /* fixme : it should be //.*$  Neglect */ }
 
 auto         { _TOKEN_(AUTO); }
 break        { _TOKEN_(BREAK); }

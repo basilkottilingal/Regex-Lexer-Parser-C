@@ -51,9 +51,10 @@ static int class [ALPH], nclass = 0;
 
 void class_get ( int ** c, int * n ) {
   /*
-  .. We reserve two equivalence class at the end, for BOL and EOL
+  .. We reserve three equivalence class at the end, for BOL, EOL and
+  .. EOB (end of buffer)
   */
-  *c = class; *n = nclass + 2;
+  *c = class; *n = nclass + 3;
 }
 
 #define END  -1

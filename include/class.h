@@ -7,11 +7,12 @@
   void class_char   ( int c );
 
   /*
-  .. two equivalence classes are reserved for beginning of line,
-  .. and end of line
+  .. 3 equivalence classes are reserved for BOL (beginning of line) ,
+  .. EOL (end of line) and EOB (end of buffer)
   */
 
-  #define BOL_CLASS  (nclass - 2)
-  #define EOL_CLASS  (nclass - 1)
+  #define BOL_CLASS  (nclass - 1)
+  #define EOL_CLASS  (nclass - 2)
+  #define EOB_CLASS  (nclass - 3)
 
 #endif

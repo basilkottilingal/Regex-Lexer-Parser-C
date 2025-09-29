@@ -34,11 +34,19 @@ int lxr_lex () {
 
     do {                            /* Transition loop until reject */
 
+      /*
+      .. Before running the transition corresponding to byte input
+      .. from the file, we do the EOL transition if the next byte is
+      .. '\n' or has reached EOF
+      */
       if (lxrEOLstatus) {
         class = lxrEOLclass; lxrEOLstatus = 0;
         last_state = state;
       }
       else {
+        /*
+        .. Consume the byte from file/buffer and update EOL status
+        */
         if ( lxrbptr[1] == '\0' && lxrEOF == NULL )
           lxr_buffer_update ();
         if (lxrbptr == lxrEOF) {
@@ -51,6 +59,11 @@ int lxr_lex () {
         lxrEOLstatus = ( lxrbptr == lxrEOF ) || (*lxrbptr == '\n');
       }
 
+      /*
+      .. find the transition corresponding to the class using check/
+      .. next tables and if not found in [base, base + nclass), use
+      .. the fallback
+      */
       depth = 0;
       while ( state != LXRDEAD && 
         ((int) lxr_check [lxr_base [state] + class] != state) ) {
@@ -62,6 +75,11 @@ int lxr_lex () {
           (int) lxr_def [state];
       }
 
+      /*
+      .. Update the most eligible token using the criteria
+      .. (a) Longest token (b) In case of clash use the first token
+      .. defined in the lexer file
+      */
       if ( state != LXRDEAD ) {
         state = (int) lxr_next [lxr_base[state] + class];
         if ( state != LXRDEAD && lxr_accept [state] &&
@@ -73,7 +91,8 @@ int lxr_lex () {
       }
 
       /*
-      .. We proceed further after EOL
+      .. We undo the EOL transition and proceed further looking for
+      .. longer tokens.
       */
       if (class == lxrEOLclass)
         state = last_state;

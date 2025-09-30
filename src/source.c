@@ -9,11 +9,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define LXRERR -2
-
 static char * lxrEOF = NULL;
-static int lxrprevchar = '\n';          /* encode '\n' for '^' bdry */
-static FILE * lxrin;
+static FILE * lxrin = NULL;
 
 extern void lxrin_set (FILE *fp) {
   if (fp == NULL) {
@@ -34,19 +31,11 @@ extern void lxrin_set (FILE *fp) {
   #define LXR_REALLOC(_a_,_s_)  realloc (_a_, _s_)
   #define LXR_FREE(_a_)         free (_a_)
 #endif
-
 static char lxrdummy[3] = {0};
 static char * lxrbuff = lxrdummy;                 /* current buffer */
 static char * lxrstrt = lxrdummy + 1;        /* start of this token */
 static char * lxrbptr = lxrdummy + 1;       /* buffer read location */
-static size_t lxrsize = 1;                     /* current buff size */
-
-#define LXR_BOL() (lxrprevchar == '\n')
-#define LXR_EOL() (*lxrbptr  == '\0' || *lxrbptr == '\n')
-#define LXR_BDRY() do {                                              \
-  lxrBGNstatus = LXR_BOL(); lxrENDstatus = LXR_EOL();                \
-                   } while (0)
-
+tatic size_t lxrsize = 1;                      /* current buff size */
 
 /*
 .. If user hasn't given a character input function, lxr_input() is
@@ -68,7 +57,7 @@ static size_t lxrsize = 1;                     /* current buff size */
     /*
     .. Create a new buffer as we hit the end of the current buffer.
     */
-    if (!lxrin) lxrin = stdin;
+    if (lxrin == NULL) lxrin = stdin;
 
     size_t non_parsed = lxrbptr - lxrstrt;
     /*
@@ -142,27 +131,18 @@ static size_t lxrsize = 1;                     /* current buff size */
       lxr_buffer_update ();
 
     /*
-    .. A character in (0x00, 0xFF]
-    */
-    if (*lxrbptr)
-      return ( (unsigned char) (lxrprevchar = *lxrbptr++) );
-      
-    /*
     .. return EOF without consuming, so you can call lxr_input () any
     .. number of times, each time returning EOF. 
     */
     if (lxrbptr == lxrEOF)
       return EOF;
 
-    /* 
-    .. Found an unexpected 0xff !! in the source file. It's behaviour
-    .. with the automaton depends on the pattern. Eventhough 0xff are
-    .. not expected in utf8 files, you may still encounter them if
-    .. any corruption happened. 
+    /*
+    .. A character in [0x00, 0xFF]
     */
-    return  
-      (int) (lxrprevchar = *lxrbptr++);
-
+    if (*lxrbptr)
+      return (int) ( (unsigned char) *lxrbptr++ );
+      
   }
 
 #endif

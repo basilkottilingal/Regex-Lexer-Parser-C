@@ -213,6 +213,10 @@ void row_print ( Row ** rows) {
 }
 #endif
 
+/*
+.. It is a heauristic approach. We have some rows of some density and
+.. size and we have to place t
+*/
 int rows_compression ( Row ** rows, int *** tables, 
   int ** tsize, int m, int n )
 {
@@ -242,14 +246,14 @@ int rows_compression ( Row ** rows, int *** tables,
 
   memset ( check, EMPTY, limit * sizeof (int) );
 
-  int offset = 0, strtindex = 0; Row * holdrow = NULL;
+  int offset = 0, startindex = 0;
   for (int niter = 0; niter < 2; ++niter ) {
 
-    int prevlimit = 0;
-    if (strtindex) {
-      holdrow = rows [strtindex];
-      rows [strtindex] = NULL;
+    if (startindex) {
+      rows [startindex] = NULL;
+      startindex = 0;
     }
+
     Row * r;
     for (int irow=0; (r = rows [irow]) != NULL; ++irow ) {
 
@@ -269,7 +273,7 @@ int rows_compression ( Row ** rows, int *** tables,
       .. where residual is the set of transitions (c, delta) which are
       .. not found in the cache of candidate.
       */
-      while (jrow >= prevlimit && nrows++ < 16) {
+      while (jrow >= startindex && nrows++ < 16) {
         queue [0] = rows [jrow]->s, queue [1] = def [queue [0]];
         for (int iq =0; iq < 2 && queue [iq] != EMPTY; ++iq) {
           int nres = row_candidate ( r, queue [iq], residual );
@@ -299,18 +303,16 @@ int rows_compression ( Row ** rows, int *** tables,
         .. removing the rows in [0, strtindex) out of the table &
         .. insert all the rows in [0, strtindex) in the next iteration
         .. (niter == 1). Why we do is that because, shorter rows like
-        .. that in [0, strindex) are easier to place in the gaps.
+        .. that in [0, strtindex) are easier to place in the gaps.
         */
-        if (!niter) {
-          prevlimit = irow;
+        if (!niter){
           /* We will insert the rows in [0, strindex) in next itern*/
-          strtindex = irow;
+          startindex = irow;
           memset (check, EMPTY, (offset + n) * sizeof (int)); 
           memset (next, 0, (offset + n) * sizeof (int));
         }
         #endif
       }
-
 
       /*
       .. We set the def [], and accept [] token of this state
@@ -326,12 +328,8 @@ int rows_compression ( Row ** rows, int *** tables,
       if (loc > offset) offset = loc;
     }
 
-    if (!strtindex)
+    if (!startindex)
       break;
-  }
-    
-  if (strtindex) {
-    rows [strtindex] = holdrow;
   }
 
   deallocate (rows, (m+1)*sizeof (Row*));

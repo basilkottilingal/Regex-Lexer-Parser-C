@@ -10,6 +10,7 @@
 .. (f) accept value in [1, ntokens] for accepted tokens
 */
 
+static char * lxrholdloc = lxrdummy + 1; 
 static char lxrholdchar = '\0';
 static int  lxrBOLstatus = 1;
 #define LXR_MAXDEPTH    1
@@ -20,6 +21,9 @@ int lxr_lex () {
 
   do {                  /* Loop looking the longest token until EOF */
 
+    /* Place reading idx just after the last character of the token */
+    lxrbptr = lxrstrt = lxrholdloc;
+    lxrBOLstatus = (lxrholdloc [-1] == '\n');
     *lxrstrt = lxrholdchar; /* put back the holding character       */
 
     int uchar, class,       /* input character & it's class         */
@@ -47,7 +51,7 @@ int lxr_lex () {
         /*
         .. Consume the byte from file/buffer and update EOL status
         */
-        if ( lxrbptr[1] == '\0' && lxrEOF == NULL )
+        if ( *lxrbptr == '\0' && lxrEOF == NULL )
           lxr_buffer_update ();
         if (lxrbptr == lxrEOF) {
           if (len == 0) isEOF = 1;
@@ -102,7 +106,7 @@ int lxr_lex () {
     /*
     .. Update with new holding character & it's location.
     */
-    char * lxrholdloc = lxrstrt + (acc_len ? acc_len : 1);
+    lxrholdloc = lxrstrt + (acc_len ? acc_len : 1);
     lxrholdchar = *lxrholdloc;
     *lxrholdloc = '\0';
 
@@ -127,10 +131,6 @@ int lxr_lex () {
           /*% if (isEOF) replace this line with any snippet reqd   %*/
       }
     } while (0);
-
-    /* Place reading idx just after the last character of the token */
-    lxrbptr = lxrstrt = lxrholdloc;
-    lxrBOLstatus = (lxrholdloc [-1] == '\n');
 
   } while (!isEOF);    /* Will stop when the first character is EOF */
 

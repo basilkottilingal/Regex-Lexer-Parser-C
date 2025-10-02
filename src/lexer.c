@@ -291,15 +291,6 @@ int lxr_generate (FILE * in, FILE * out) {
     return RGXERR;
   }
 
-  /*
-  .. Copies the whole file "src/source.c" at the top of the
-  .. lexer generator file
-  */
-  if (lexer_head (out)) {
-    error ("lxr : failed writing lexer head");
-    return RGXERR;
-  }
-
   Stack * r = stack_new (64 * sizeof (void *)),
     * a = stack_new (64 * sizeof (void *));
   if (lxr_grammar (in, r, a)) {
@@ -341,6 +332,22 @@ int lxr_generate (FILE * in, FILE * out) {
     "unsigned char", "unsigned char"
   };
 
+  int nclass = len [5], * class = tables [6];
+   
+  fprintf ( out, "\n#define lxrNELclass  %d", class ['\n']);
+  fprintf ( out, "\n#define lxrEOLclass  %d", EOL_CLASS);
+  fprintf ( out, "\n#define lxrEOFclass  %d", BOL_CLASS);
+  fprintf ( out, "\n#define lxrEOBclass  %d", 0);
+  fprintf ( out, "\n#define LXRCLASS(c)  ( lxr_class [c] )");
+  /*
+  .. Copies the whole file "src/source.c" at the top of the
+  .. lexer generator file
+  */
+  if (lexer_head (out)) {
+    error ("lxr : failed writing lexer head");
+    return RGXERR;
+  }
+
   /*
   .. write all tables, before main lexer function
   */
@@ -356,9 +363,6 @@ int lxr_generate (FILE * in, FILE * out) {
     }
     fprintf ( out, "\n};" );
   }
-   
-  int nclass = len [5]; 
-  fprintf ( out, "\n#define lxrEOLclass  %d", EOL_CLASS);
 
   /*
   .. write the main lexer function which executes appropriate

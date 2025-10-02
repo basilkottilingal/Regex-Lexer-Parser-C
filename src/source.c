@@ -1,3 +1,4 @@
+
 /*
 .. ---------------------------- Lexer --------------------------------
 .. This is a generated file for table based lexical analysis. The file
@@ -31,11 +32,11 @@ extern void lxrin_set (FILE *fp) {
   #define LXR_REALLOC(_a_,_s_)  realloc (_a_, _s_)
   #define LXR_FREE(_a_)         free (_a_)
 #endif
-static char lxrdummy[3] = {0};
+static char lxrdummy[3] = { '\n', '\0', '\0' };
 static char * lxrbuff = lxrdummy;                 /* current buffer */
 static char * lxrstrt = lxrdummy + 1;        /* start of this token */
 static char * lxrbptr = lxrdummy + 1;       /* buffer read location */
-tatic size_t lxrsize = 1;                      /* current buff size */
+static size_t lxrsize = 1;                     /* current buff size */
 
 /*
 .. If user hasn't given a character input function, lxr_input() is

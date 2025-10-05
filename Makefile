@@ -5,7 +5,7 @@ C99    = -std=c99 -pedantic
 RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c \
          src/stack.c src/bits.c src/error.c src/class.c              \
          src/compression.c
-LXR    = src/lexer.c
+LXR    = src/lexer.c src/lex.c
 OBJ    = $(patsubst src/%.c, obj/%.o, $(RGX))
 LOBJ   = $(patsubst src/%.c, obj/%.o, $(LXR))
 TST    = test/nfa.c test/dfa.c test/bits.c test/tokens-nfa.c         \
@@ -65,4 +65,5 @@ all: obj/rgx.a
 	$(MAKE) obj/tokens-nfa.tst
 	$(MAKE) obj/lxrgrammar.ltst
 	$(MAKE) obj/c-tokens.ltst
+	$(MAKE) obj/read_lex.ltst
 	$(MAKE) obj/input.tst

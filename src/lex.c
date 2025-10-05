@@ -38,9 +38,6 @@ typedef struct Macro {
   struct Macro * next;
 } Macro;
 
-#define prime 67u
-static Macro * table [prime];
-
 /*
 .. A code snippet is defined in the definitions section in either of
 .. the two forms as given below
@@ -66,7 +63,8 @@ typedef struct Snippet {
   struct Snippet * next;
 } Snippet;
 
-static Snippet * snippets = NULL;
+static Snippet * snippet_head = NULL;
+static Snippet ** snippets = & snippet_head;
 
 /*
 .. patterns are defined exclusively in the rules section, that falls
@@ -90,6 +88,15 @@ typedef struct Pattern {
 } Pattern;
 
 static Pattern * patterns = NULL;
+
+/* ...................................................................
+.. ...................................................................
+.. ..................  hash table of macros  .........................
+.. ...................................................................
+.. .................................................................*/
+
+#define prime 67u
+static Macro * table [prime];
 
 static inline 
 uint32_t hash ( const char * key, uint32_t len ) {
@@ -157,8 +164,11 @@ uint32_t hash ( const char * key, uint32_t len ) {
   return h;
 }
 
+/*
+.. lookup for a macro in the macro hashtable "table"
+*/
 static Macro ** lookup (const char * key) {
-  uint32_t h = hash (key, strlen (macro));
+  uint32_t h = hash (key, strlen (key));
   Macro ** p = & table [h % prime], * m;
   while ( (m = *p) != NULL ) {
     if ( !strcmp (m->key, key) )
@@ -168,89 +178,469 @@ static Macro ** lookup (const char * key) {
   return p;
 }
 
-static int macro_new (const char * macro, const char * pattern) {
-  uint32_t h = hash (macro, strlen (macro));
-  Macro ** p = lookup (macro), * m;
+/* ...................................................................
+.. ...................................................................
+.. .....  reading definition section ( macros & header code )  .......
+.. ...................................................................
+.. .................................................................*/
+
+
+static int line = 0;
+/*
+.. Create a new macroa nd corresponding pattern
+*/
+static int macro_new (char * macro, char * pattern) {
+  #define COPY(start) do {                                           \
+     size_t l = ptr - start;                                         \
+     if (l + len >= RGXSIZE) {                                       \
+       error ("rgx buffer out of memory");                           \
+       return RGXERR;                                                \
+     }                                                               \
+     memcpy (& rgx [len], start, l);                                 \
+     len += l;                                                       \
+   } while (0)
+
+  Macro ** p, * m;
+  char rgx [RGXSIZE], * ptr = pattern, c;
+  size_t len = 0;
+
+  while ( (c = *ptr++) ) {
+
+    char * start = ptr-1;
+    if (c == '\\') {
+      if ( (c = *ptr++) == '\0' ) {
+        error ("incomplete escaping");
+        return RGXERR;
+      }
+      COPY (start);
+      continue;
+    }
+    if (c != '{') {
+      COPY (start);
+      continue;
+    }
+    if ( (c = *ptr++) == ',' || ( c <= '9' && c >= '0' ) ) {
+      /* {,n} {m,n} {m} */
+      COPY (start);
+      continue;
+    }
+
+    char * child = ptr - 1;
+    if ( !(c == '_' || (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z')) )
+      return RGXERR;
+
+    do {
+      /* Substitute macro by corresponding regex */
+      if ( c == '}' ) {
+        ptr[-1] = '\0';
+        p = lookup (child);
+        ptr[-1] = '}';
+        if ( (m = *p) == NULL ) {
+          error ("macro {%s} not found", child);
+          return RGXERR;
+        }
+        size_t l = strlen (m->rgx);
+        if (l + len >= RGXSIZE) {
+          error ("rgx buffer out of memory"); 
+          return RGXOOM;
+        }
+        memcpy ( & rgx [len], m->rgx, l );
+        len += l;
+
+        break;
+      }
+
+      if ( c == '_' || (c >= 'a' && c <= 'z') ||
+        (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') )
+        continue;
+
+      error ("invalid name");
+      return RGXERR;
+    } while ( (c = *ptr++) );
+
+    if (!c) {
+      error ("incomplete }");
+      return RGXERR;
+    }
+  }
+  rgx [len] = '\0';
+  int rpn [RGXSIZE];
+  int status = rgx_rpn (rgx, rpn); /* check regex validity */
+  if (status <= 0) {
+    error ("cannot create rpn for regex %s in line %d", rgx, line);
+    return RGXERR;
+  }
+  rgx [status] = '\0'; /* remove trailing white spaces */
+
+  /* Insert macro to hashtable*/
+  p = lookup (macro);
   if ( (m = *p) != NULL ) {
     error ( "macro %s redefined in lexer definition in line %d",
       macro, line);
     return RGXERR;
   }
   *p = m = allocate (sizeof (Macro));
-  p->key = allocate_str (macro);
+  m->key = allocate_str (macro);
+  m->rgx = allocate_str (rgx);
 
-  char rgx [RGXSIZE];
-  char * ptr = pattern, c;
-  size_t len = 0;
-  while ( (c = *ptr++) ) {
-
-    char * strt = ptr - 1;
-
-    if ( c != '{' || (c = *ptr++) == '\\' ) {
-      if ( c == '\\'
-      if ( len == RGXSIZE-1 ) {
-        error ("rgx buffer out of memory"); 
-        return RGXOOM;
-      }
-      rgx [len++] = c;
-      continue;
-    }
-
-    if ( (c = *ptr++) == '\0' ) {
-      error ("incomplete pattern");
-      return RGXERR;
-    }
-
-    if ( c == ',' || ( c <= '9' && c >= '0' ) )
-      
-    if (c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')){
-      char * child = ptr - 1, * holdloc = NULL, holdchar;
-      while ( (c = *ptr++) ) {
-        if ( c == '}' ) {
-          *holdloc = ptr - 1;
-          if (holdloc - child == 1) {
-            error ("empty {}");
-            return RGXERR;
-          }
-          holdchar = *holdloc;
-          *holdloc = '\0';
-          p = lookup (child);
-          if ( (m = *p) == NULL ) {
-            error ("macro {%s} not found", child);
-            *holdloc = holdchar;
-            return RGXERR;
-          }
-          size_t l = strlen (m->rgx);
-          if (l + len >= RGXSIZE) {
-            error ("rgx buffer out of memory"); 
-            return RGXOOM;
-          }
-          memcpy ( & rgx [len], m->rgx, l );
-          len += l; 
-        }
-        if ( !( c == '_' || (c >= 'a' && c <= 'z')
-            || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')) )
-          continue;
-        }
-      }
-    }
-  } 
-
-  int rpn [RGXSIZE];
-
-  p->rgx = allocate_str (rgx);
-
-  if ( rgx_rpn (rgx, rpn) < 0) {
-    error ("cannot create rpn for regex %s in line %d", rgx, line);
-    return RGXERR;
-  }
+  printf ("\nmacro %s rgx %s", macro, rgx);
   
   return 0;
 }
 
-static int line = 1;
+int lex_read_definitions ( FILE * in ) {
 
-static void definitions ( FILE * in ) {
-  char buff [BUFSIZ];
-  
+  char buff [PAGE_SIZE], *ptr, c;
+  int code = 0, comment = 0;
+
+  while (fgets (buff, sizeof buff, in)) {
+    line++;
+
+    size_t len = strlen (buff);
+
+    if ( buff [ len-1 ] != '\n' && !feof (in) ) {
+      error ("very long line");
+      return RGXOOM;
+    }
+
+    /*
+    .. Source code section ^%{ ^%}
+    */
+    if (code) {
+      if ( buff [0] == '%' && buff [1] == '}' ) {
+        code = 0; continue;
+      }
+      Snippet * s = allocate ( sizeof (Snippet) );
+      s->code = allocate_str (buff);
+      *snippets = s;
+      snippets = & s->next;
+      continue;
+    }
+
+    ptr = buff; c = *ptr;
+    /*
+    .. Comment section, white spaces and empty lines
+    */
+    if (comment || c == ' ' || c == '\t' || c == '\n') {
+      while ( (c = *ptr++) != '\n' ) {
+        if (comment) {
+          if (c == '*' && *ptr == '/') {
+            ++ptr; comment = 0;
+          }
+          continue;
+        }
+        if ( c == '/' && *ptr == '*' ) {
+          ++ptr; comment = 1; continue;
+        }
+        if (c == ' ' || c == '\t') continue;
+
+        error ("content should be placed at the beginning");
+        return RGXERR;
+      }
+      continue;
+    }
+
+    if ( buff [0] == '%' ) {
+      if (buff [1] == '{' ) {
+        code = 1;
+        continue;
+      }
+      if (buff [1] == '%')  /* %% is the end of definition section */
+        return 0;
+      error ("warning : unknown/unimplemented in line %d", line);
+      continue;
+    }
+
+    if ( c == '_' || (c <='z' && c >= 'a') ||
+       (c <='Z' && c >= 'A') ) {
+      while ( (c = *ptr++) != '\n' ) {
+        if ( c == '_' || (c <='z' && c >= 'a') ||
+          (c <='Z' && c >= 'A') || (c <='9' && c >= '0') )
+          continue;
+        if ( ! (c == ' ' || c == '\t' ) ) {
+          error ("missing separator");
+          return RGXERR;
+        }
+        ptr [-1] = buff [len - 1] = '\0';
+        while ( (c = *ptr++) == ' ' || c == '\t' ){}
+        --ptr;
+        int status = macro_new (buff, ptr);
+        if (status < 0) {
+          error ("cannot create macro error %s", buff);
+          return RGXERR;
+        }
+        break;
+      }
+      if ( c == '\n' ) {
+        error ("ill defined macro");
+        return RGXERR;
+      }
+      continue;
+    }
+
+    error ("unknown syntax");
+    return RGXERR;
+
+  }
+
+  error ("Did not encounter %%");
+  return RGXERR;
+}
+
+/* ...................................................................
+.. ...................................................................
+.. ........  reading rule section ( rules & action )  ................
+.. ...................................................................
+.. .................................................................*/
+
+/*
+.. Naive way to look for the regex pattern at the beginning of the
+.. line. The regex will be stored in "buff".
+*/
+static
+int _pattern (FILE * in, char * rgx, size_t lim) {
+  int c, len = 0, escape = 0, charclass = 0, quote = 0, end = 0;
+  #define MACROLIM 128
+  char macro [MACROLIM];
+  while ( (c = fgetc(in)) != EOF ) {
+    rgx[len++] = (char) c;
+    if (len == lim - 2) {
+      error ( "rgx buff limit" );
+      return RGXOOM;
+    }
+    if (escape) {
+      escape = 0;
+      continue;
+    }
+    if (c == '\\') {
+      escape = 1;
+      continue;
+    }
+    if (quote) {
+      switch (c) {
+        case '"' : len--; quote = 0; break;
+        case '|' : case '*' : case '?' : case '+' :
+        case '[' : case ']' : case '{' : case '}' :
+        case '(' : case ')' : case '^' : case '$' :
+        case '-' : case '.' : case '\\' :
+          rgx [len-1] = '\\'; rgx [len++] = c; break;
+      }
+      continue;
+    }
+    if (c == '\n') {
+      ++line;
+      #define EMPTY 10
+      if ( len == 1 )
+        return EMPTY;                                 /* Empty line */
+      break;
+    }
+    if (charclass) {
+      if (c == ']')
+        charclass = 0;
+      continue;
+    }
+
+    switch (c) {                  /* outside []. i.e charclass = 0 */
+      case '[' : charclass = 1; break;
+      /* White space are taken as end of regex */
+      case ' ' :
+      case '\t' :
+        rgx[--len] = '\0';
+        if ( len == 0 ) {
+          int comment = 0, p = c;
+          while ( (c = fgetc(in)) != EOF ) {
+            if ( c == '\n' ) { 
+              ++line;
+              if (!comment) break;
+            }
+            if ( comment ) {
+              if (c == '/' && p == '*' ) comment = 0;
+            }
+            else if ( c == '/' ) {
+              if ( (c = fgetc (in)) != '*' )
+                return RGXERR;
+              comment = 1;
+            }
+            else if ( !(c == ' '|| c == '\t') )  {
+              return RGXERR;
+            }
+            p = c;
+          }
+          if ( c == EOF )
+            return RGXERR;
+          return EMPTY;      /* Empty line, with just white spaces */
+        }
+        printf ("\npattern  %s", rgx); fflush (stdout);
+        return 0;
+      case '%' :
+        if (len == 2 && end)
+          return EOF;
+        if (len == 1) end = 1;
+        break;
+      case '{' :
+        --len;
+        int k = 0;
+        c = fgetc (in);
+        if (c == ',' || (c >= '0' && c <= '9')) {
+          rgx [len++] = c;
+          continue;
+        }
+        if ( !(c == '_' || (c >= 'a' && c <= 'z') ||
+          (c >= 'A' && c <= 'Z')) )
+          return RGXERR;
+        do {
+          if (c == '}') break;
+          if (k == MACROLIM-2) return RGXOOM;
+          if ( c == '_' || (c >= 'a' && c <= 'z') ||
+            (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') )
+            {
+              macro [k++] = c;
+              continue;
+            }
+          return RGXERR;
+        } while ( (c = fgetc (in)) != EOF );
+        if ( c!= '}') return RGXERR;
+        macro [k] = '\0';
+        Macro ** p = lookup (macro), *m;
+        if ( (m = *p) == NULL ) {
+          error ("macro {%s} not found", macro);
+          return RGXERR;
+        }
+        int l = strlen (m->rgx);
+        if (l + len >= lim) {
+          error ("rgx buffer out of memory"); 
+          return RGXOOM;
+        }
+        memcpy ( & rgx [len], m->rgx, l );
+        len += l;
+        break;
+      case '"' :
+        --len; quote = 1;
+        break;
+    }
+  }
+
+  if (!len) {
+    error ("Did not encounter %%");
+    return RGXERR;
+  }
+  error ("Incomplete rgx or missing action");
+  return RGXERR;
+}
+
+static
+int _action (FILE * fp, char * buff, size_t lim) {
+  /* fixme : remove the limit. use realloc() to handle large buffer */
+
+  int c, j = 0, depth = 0, quote = 0, escape = 0;
+  /*
+  .. Consume white spaces before encountering '{' i.e start of action.
+  .. Warning : Action need to be in the same line as regex.
+  */
+  while ( (c = fgetc(fp)) != EOF ) {
+    if ( c == '{' ) {
+      depth++;
+      buff [j++] = '{';
+      break;
+    }
+    if ( !(c == ' ' || c == '\t' ) ) {
+      error ("lxr grammar : Unexpected character"
+        "between regex & action");
+      return RGXERR;
+    }
+  }
+
+  /*
+  .. Doesn't validate C grammar that falls in action block { ... }.
+  .. The whole action block will be stored inside 'buff' unless
+  .. you run out of limit.
+  */
+  while ( (c = fgetc(fp)) != EOF ) {
+    buff[j++] = (char) c;
+    if (j == lim) {
+      error ( "lxr grammar: action buff limit" );
+      return RGXERR;
+    }
+
+    if (c == '\n')
+      line++;
+
+    if (quote) {
+      if (escape)
+        escape = 0;
+      else if (c == '\\')
+        escape = 1;
+      else if (c == '"') {
+        quote  = 0;
+        continue;
+      }
+    }
+    else {
+      if (c == '"') {
+        quote = 1;
+        continue;
+      }
+      if (c == '{')
+        depth++;
+      else if (c == '}') {
+        depth--;
+        if (!depth)
+          break;
+      }
+    }
+  }
+  buff[j] = '\0';
+
+  if (depth) {
+    error ("lxr grammar : incomplete action. Missing '}'");
+    return RGXERR;
+  }
+
+  while ( (c = fgetc(fp)) != EOF ) {
+    if ( c == '\n') {
+      line++;
+      break;
+    }
+    if ( ! (c == ' ' || c == '\t' ) ) {
+      error ("lxr grammar : unexpected character after action");
+      return RGXERR;
+    }
+  }
+  return 0;
+}
+
+
+int lex_read_rules ( FILE * in ) {
+  int status;
+  char rgx [RGXSIZE], action [4096];
+
+  for (;;) {
+
+    /* Read rgx pattern */
+    status = _pattern (in, rgx, sizeof (rgx));
+    if ( status == EOF ) break;
+    if ( status == EMPTY ) continue;
+    if ( status == RGXERR ) { fclose (in); return RGXERR; }
+    /* Add to the stack */
+
+    /* Read the action for the above regex pattern */
+    status = _action (in, action, sizeof (action));
+    if ( status == RGXERR ) return RGXERR;
+    /* Add to the stack */
+  }
+  return 0;  
+}
+
+int read_lex_input (FILE * fp) {
+  line = 0;
+  if (lex_read_definitions (fp) < 0) {
+    error ("failed reading defintion section. line %d", line);
+    return RGXERR;
+  }
+  if (lex_read_rules (fp) < 0) {
+    error ("failed reading rules section. line %d", line);
+    return RGXERR;
+  }
+  return 0;
 }

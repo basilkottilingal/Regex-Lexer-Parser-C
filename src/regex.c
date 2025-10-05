@@ -244,7 +244,7 @@ int rgx_rpn ( char * s, int * rpn ) {
     return ( stack.n == stack.max ?                                  \
        (stack.a[stack.n-1] = RGXOOM) : (stack.a[stack.n++] = RGXERR) )
 
-  char ** rgx = &s;
+  char ** rgx = &s, * start = s;
   int queued[4],
       RGXOPS[RGXSIZE],
       op, last = RGXBGN;
@@ -410,7 +410,7 @@ int rgx_rpn ( char * s, int * rpn ) {
     .. characters found in the regex
     */
     PUSH (stack, RGXEOE);
-    return *rgx - s; 
+    return (int) (*rgx - start) - 1; 
   }
 
   /*

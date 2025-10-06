@@ -684,11 +684,76 @@ int lex_read_rules ( FILE * in ) {
 }
 
 int lex_tables () {
-  size_t n = ( actions->len / sizeof (void *) );
-  char ** rgxs = allocate ( n * sizeof (char *) );
+  size_t nrgx = ( actions->len / sizeof (void *) );
+  char ** rgx = allocate ( nrgx * sizeof (char *) );
   Action ** A = (Action **) actions->stack;
-  for (int i=0; i<n; ++i)
-    rgxs [i] = A[i]->rgx;
+  for (int i=0; i<nrgx; ++i)
+    rgx [i] = A[i]->rgx;
+  
+  DState * dfa = NULL;
+  if (rgx_lexer_dfa (rgx, nrgx, &dfa) < 0) {
+    error ("failed to create a minimal dfa");
+    return RGXERR;
+  }
+
+  /*
+  .. print all the tables used by lexer function
+  */
+  int ** tables, * len;
+  if (dfa_tables (&tables, &len) < 0) {
+    error ("Table size Out of memory limit");
+    return RGXOOM;
+  }
+
+  /*
+  .. fixme : (a) Optimize, (b) give option to customize datatype,
+  .. (c) Make sure, lexer can run on any system (atleast linux),
+  .. (d) boundary assertion still not available. (e) Can you
+  .. add boundary assertion BOL, EOL, EOF as alphabet/transition
+  .. input outside [0x00, 0xFF].
+  */
+
+  char * names [] = {
+    "check", "next", "base", "accept", "def", "meta", "class"
+  };
+
+  char * type [] = {
+    "short", "short", "short", "short", "short",
+    "unsigned char", "unsigned char"
+  };
+
+  int nclass = len [5], * class = tables [6];
+   
+  /*
+  fprintf ( out, "\n#define lxrNELclass  %d", class ['\n']);
+  fprintf ( out, "\n#define lxrEOLclass  %d", EOL_CLASS);
+  fprintf ( out, "\n#define lxrEOFclass  %d", BOL_CLASS);
+  fprintf ( out, "\n#define lxrEOBclass  %d", 0);
+  fprintf ( out, "\n#define LXRCLASS(c)  ( lxr_class [c] )");
+  .. Copies the whole file "src/source.c" at the top of the
+  .. lexer generator file
+  if (lexer_head (out)) {
+    error ("lxr : failed writing lexer head");
+    return RGXERR;
+  }
+  */
+FILE * out = stdout;
+
+  /*
+  .. write all tables, before main lexer function
+  */
+  for (int i=0; i<7; ++i) {
+    int * arr = tables [i], l = len [i];
+    if (!arr) continue;
+    fprintf ( out, "\n\nstatic %s lxr_%s [%d] = {\n",
+      type [i], names[i], l );
+    for (int j=0; j<l; ++j) {
+      fprintf ( out, " %4d%s", arr[j], j == l-1 ? "" : ",");
+      if (j%10 == 0)  fprintf (out, "\n");
+      if (j%100 == 0) fprintf (out, "\n");
+    }
+    fprintf ( out, "\n};" );
+  }
 }
 
 int read_lex_input (FILE * fp) {
@@ -703,5 +768,7 @@ int read_lex_input (FILE * fp) {
   }
   fprintf (stderr, "\nwarnings ");
   errors ();
+
+  lex_tables ();
   return 0;
 }

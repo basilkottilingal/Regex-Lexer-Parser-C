@@ -284,7 +284,11 @@ static int macro_new (char * macro, char * pattern) {
   m->key = allocate_str (macro);
   m->rgx = allocate_str (rgx);
 
-  printf ("\nmacro %s rgx %s", macro, rgx);
+  if ( ! ( (rgx [0] == '[' && rgx [status-1] == ']') ||
+       (rgx [0] == '(' && rgx [status-1] == ')') ) ) {
+    error ("warning : macro %s recommended in ( )", macro);
+  }
+  printf ("\nmacro %s rgx %s", macro, rgx); fflush (stdout);
   
   return 0;
 }
@@ -294,7 +298,7 @@ int lex_read_definitions ( FILE * in ) {
   char buff [PAGE_SIZE], *ptr, c;
   int code = 0, comment = 0;
 
-  while (fgets (buff, sizeof buff, in)) {
+  while (fgets (buff, sizeof buff, in)) { /*read line by line */
     line++;
 
     size_t len = strlen (buff);
@@ -318,16 +322,22 @@ int lex_read_definitions ( FILE * in ) {
       continue;
     }
 
-    ptr = buff; c = *ptr;
+    ptr = buff; c = *ptr++;
     /*
-    .. Comment section, white spaces and empty lines
+    .. Consuming comment section, white spaces and empty lines
     */
+    if ( c == '/' && !comment ) {
+      if ( (c = *ptr++) != '*' ) {
+        error ("unknown syntax");
+        return RGXERR;
+      }
+      c = *ptr++; comment = 1;
+    }
     if (comment || c == ' ' || c == '\t' || c == '\n') {
-      while ( (c = *ptr++) != '\n' ) {
+      do {
+        if (c == '\n') break;
         if (comment) {
-          if (c == '*' && *ptr == '/') {
-            ++ptr; comment = 0;
-          }
+          if (c == '*' && *ptr++ == '/') comment = 0;
           continue;
         }
         if ( c == '/' && *ptr == '*' ) {
@@ -335,23 +345,33 @@ int lex_read_definitions ( FILE * in ) {
         }
         if (c == ' ' || c == '\t') continue;
 
-        error ("content should be placed at the beginning");
+        error ("content should be placed at BOL");
         return RGXERR;
-      }
+      } while ( (c = *ptr++) );
       continue;
     }
 
-    if ( buff [0] == '%' ) {
-      if (buff [1] == '{' ) {
+    /*
+    .. End of definition or end of code snippet
+    */
+    if ( c == '%' ) {
+      c = *ptr++;
+      if (c == '{' ) {
         code = 1;
         continue;
       }
-      if (buff [1] == '%')  /* %% is the end of definition section */
+      if (c == '%')  /* %% is the end of definition section */
         return 0;
+      /*
+      .. Other % option, %top {}, etc .. not implemented
+      */
       error ("warning : unknown/unimplemented in line %d", line);
       continue;
     }
 
+    /*
+    .. A macro definition, maps a macro identifier to a rgx fragment.
+    */
     if ( c == '_' || (c <='z' && c >= 'a') ||
        (c <='Z' && c >= 'A') ) {
       while ( (c = *ptr++) != '\n' ) {
@@ -379,6 +399,10 @@ int lex_read_definitions ( FILE * in ) {
       continue;
     }
 
+    /*
+    .. Anything other than %**, macro definition and empty/comments
+    .. are taken as unknown syntax
+    */
     error ("unknown syntax");
     return RGXERR;
 
@@ -431,9 +455,11 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
     if (c == '\n') {
       ++line;
       #define EMPTY 10
+      #define NOACTION 11
       if ( len == 1 )
         return EMPTY;                                 /* Empty line */
-      break;
+      rgx[--len] = '\0';
+      return NOACTION;                    /*regex with no action !! */
     }
     if (charclass) {
       if (c == ']')
@@ -441,11 +467,14 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
       continue;
     }
 
-    switch (c) {                  /* outside []. i.e charclass = 0 */
+    switch (c) {    /* outside quotes "" and outside character class*/
+      case '/' :
+        error ("warning : (in case) look ahead operator '/' is "
+          "not implemented. line %d", line);
+        break;
       case '[' : charclass = 1; break;
-      /* White space are taken as end of regex */
       case ' ' :
-      case '\t' :
+      case '\t' :          /* White space are taken as end of regex */
         rgx[--len] = '\0';
         if ( len == 0 ) {
           int comment = 0, p = c;
@@ -469,7 +498,7 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
           }
           if ( c == EOF )
             return RGXERR;
-          return EMPTY;      /* Empty line, with just white spaces */
+          return EMPTY;       /* Empty line, with just white spaces */
         }
         printf ("\npattern  %s", rgx); fflush (stdout);
         return 0;
@@ -610,26 +639,56 @@ int _action (FILE * fp, char * buff, size_t lim) {
   return 0;
 }
 
+typedef struct Action {
+  char * rgx, * action;
+  int line;
+} Action;
+
+static Stack * actions = NULL;
+
+static inline 
+void pattern_action ( const char * r, const char * a, int line) {
+  Action * A = allocate (sizeof (Action));
+  *A = (Action) { allocate_str (r), allocate_str (a), line };
+  stack_push (actions, A);
+}
 
 int lex_read_rules ( FILE * in ) {
-  int status;
-  char rgx [RGXSIZE], action [4096];
+
+  actions = stack_new (0);
+
+  int status, cline;
+  char rgx [RGXSIZE], action [PAGE_SIZE];
 
   for (;;) {
-
+    cline = line;
     /* Read rgx pattern */
     status = _pattern (in, rgx, sizeof (rgx));
     if ( status == EOF ) break;
     if ( status == EMPTY ) continue;
-    if ( status == RGXERR ) { fclose (in); return RGXERR; }
-    /* Add to the stack */
+    if ( status == RGXERR ) return RGXERR;
+    if ( status == NOACTION ) {
+      pattern_action (rgx, "", cline);
+      continue;
+    }
+    #undef EMPTY
+    #undef NOACTION
 
     /* Read the action for the above regex pattern */
     status = _action (in, action, sizeof (action));
     if ( status == RGXERR ) return RGXERR;
-    /* Add to the stack */
+
+    pattern_action (rgx, action, cline);
   }
   return 0;  
+}
+
+int lex_tables () {
+  size_t n = ( actions->len / sizeof (void *) );
+  char ** rgxs = allocate ( n * sizeof (char *) );
+  Action ** A = (Action **) actions->stack;
+  for (int i=0; i<n; ++i)
+    rgxs [i] = A[i]->rgx;
 }
 
 int read_lex_input (FILE * fp) {
@@ -642,5 +701,7 @@ int read_lex_input (FILE * fp) {
     error ("failed reading rules section. line %d", line);
     return RGXERR;
   }
+  fprintf (stderr, "\nwarnings ");
+  errors ();
   return 0;
 }

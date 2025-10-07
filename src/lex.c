@@ -22,6 +22,8 @@
 #include "regex.h"
 #include "class.h"
 
+#define LXR_DEBUG
+
 static FILE * out;
 
 /*
@@ -37,7 +39,6 @@ static FILE * out;
 
 typedef struct Macro {
   char * key, * rgx;
-  int flag;
   struct Macro * next;
 } Macro;
 
@@ -53,6 +54,7 @@ typedef struct Macro {
 
 typedef struct Snippet {
   char * code;
+  int line;
   struct Snippet * next;
 } Snippet;
 
@@ -74,13 +76,12 @@ static Snippet ** snippets = & snippet_head;
 .. ID       { return IDENTIFIER; }
 .. %%
 */
+typedef struct Action {
+  char * rgx, * action;                    /* Pattern - Action pair */
+  int line;
+} Action;
 
-typedef struct Pattern {
-  char * pattern, * action;
-  int id, flag;
-} Pattern;
-
-static Pattern * patterns = NULL;
+static Stack * actions = NULL;
 
 /* ...................................................................
 .. ...................................................................
@@ -180,18 +181,20 @@ static Macro ** lookup (const char * key) {
 
 static int line = 0;
 /*
-.. Create a new macroa nd corresponding pattern
+.. Read a new macro and insert it into the hashtable and corresponding
+.. regex pattern
 */
 static int macro_new (char * macro, char * pattern) {
+
   #define COPY(start) do {                                           \
-     size_t l = ptr - start;                                         \
-     if (l + len >= RGXSIZE) {                                       \
-       error ("rgx buffer out of memory");                           \
-       return RGXERR;                                                \
-     }                                                               \
-     memcpy (& rgx [len], start, l);                                 \
-     len += l;                                                       \
-   } while (0)
+      size_t l = ptr - start;                                        \
+      if (l + len >= RGXSIZE) {                                      \
+        error ("rgx buffer out of memory");                          \
+        return RGXERR;                                               \
+      }                                                              \
+      memcpy (& rgx [len], start, l);                                \
+      len += l;                                                      \
+    } while (0)
 
   Macro ** p, * m;
   char rgx [RGXSIZE], * ptr = pattern, c;
@@ -224,7 +227,10 @@ static int macro_new (char * macro, char * pattern) {
       return RGXERR;
 
     do {
-      /* Substitute macro by corresponding regex */
+      /*
+      .. In case the macro uses another macro, substitute the child
+      .. macro by the corresponding regex
+      */
       if ( c == '}' ) {
         ptr[-1] = '\0';
         p = lookup (child);
@@ -248,8 +254,9 @@ static int macro_new (char * macro, char * pattern) {
         (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') )
         continue;
 
-      error ("invalid name");
+      error ("invalid child macro name");
       return RGXERR;
+
     } while ( (c = *ptr++) );
 
     if (!c) {
@@ -257,16 +264,26 @@ static int macro_new (char * macro, char * pattern) {
       return RGXERR;
     }
   }
+
+  /*
+  .. Check the validity of the macro's regex pattern before inserting
+  .. to the table
+  */
   rgx [len] = '\0';
   int rpn [RGXSIZE];
-  int status = rgx_rpn (rgx, rpn); /* check regex validity */
+  int status = rgx_rpn (rgx, rpn);
   if (status <= 0) {
     error ("cannot create rpn for regex %s in line %d", rgx, line);
     return RGXERR;
   }
-  rgx [status] = '\0'; /* remove trailing white spaces */
+  /*
+  .. status = length of regex string. Remove trailing white spaces
+  */
+  rgx [status] = '\0';
 
-  /* Insert macro to hashtable*/
+  /*
+  .. Insert macro to hashtable
+  */
   p = lookup (macro);
   if ( (m = *p) != NULL ) {
     error ( "macro %s redefined in lexer definition in line %d",
@@ -288,12 +305,17 @@ static int macro_new (char * macro, char * pattern) {
   return 0;
 }
 
+/*
+.. Read definition section in the lexer file. The beginning section
+.. until first ^%%, is called the definition where you define regex
+.. macros and pre-lexer code snippets
+*/
 int lex_read_definitions ( FILE * in ) {
 
   char buff [PAGE_SIZE], *ptr, c;
   int code = 0, comment = 0;
 
-  while (fgets (buff, sizeof buff, in)) { /*read line by line */
+  while (fgets (buff, sizeof buff, in)) {       /*read line by line */
     line++;
 
     size_t len = strlen (buff);
@@ -303,25 +325,20 @@ int lex_read_definitions ( FILE * in ) {
       return RGXOOM;
     }
 
-    /*
-    .. Source code section ^%{ ^%}
-    */
-    if (code) {
+    if (code) {                   /* .. Source code section ^%{ ^%} */
       if ( buff [0] == '%' && buff [1] == '}' ) {
         code = 0; continue;
       }
       Snippet * s = allocate ( sizeof (Snippet) );
       s->code = allocate_str (buff);
+      s->line = line;
       *snippets = s;
       snippets = & s->next;
       continue;
     }
 
     ptr = buff; c = *ptr++;
-    /*
-    .. Consuming comment section, white spaces and empty lines
-    */
-    if ( c == '/' && !comment ) {
+    if ( c == '/' && !comment ) {  /* See if beginning of a comment */
       if ( (c = *ptr++) != '*' ) {
         error ("unknown syntax");
         return RGXERR;
@@ -329,7 +346,7 @@ int lex_read_definitions ( FILE * in ) {
       c = *ptr++; comment = 1;
     }
     if (comment || c == ' ' || c == '\t' || c == '\n') {
-      do {
+      do {         /* consume comments, white spaces and empty line */
         if (c == '\n') break;
         if (comment) {
           if (c == '*' && *ptr++ == '/') comment = 0;
@@ -346,29 +363,23 @@ int lex_read_definitions ( FILE * in ) {
       continue;
     }
 
-    /*
-    .. End of definition or end of code snippet
-    */
     if ( c == '%' ) {
       c = *ptr++;
-      if (c == '{' ) {
+      if (c == '{' ) {      /* %{ is the beginning of code snippets */
         code = 1;
         continue;
       }
-      if (c == '%')  /* %% is the end of definition section */
+      if (c == '%')          /* %% is the end of definition section */
         return 0;
-      /*
-      .. Other % option, %top {}, etc .. not implemented
-      */
       error ("warning : unknown/unimplemented in line %d", line);
-      continue;
+      continue;  /* Other % option, %top {}, etc .. not implemented */
     }
 
     /*
     .. A macro definition, maps a macro identifier to a rgx fragment.
     */
     if ( c == '_' || (c <='z' && c >= 'a') ||
-       (c <='Z' && c >= 'A') ) {
+       (c <='Z' && c >= 'A') ) { 
       while ( (c = *ptr++) != '\n' ) {
         if ( c == '_' || (c <='z' && c >= 'a') ||
           (c <='Z' && c >= 'A') || (c <='9' && c >= '0') )
@@ -395,8 +406,8 @@ int lex_read_definitions ( FILE * in ) {
     }
 
     /*
-    .. Anything other than %**, macro definition and empty/comments
-    .. are taken as unknown syntax
+    .. Anything other than (i) %**, (ii) macro definition, (iii) empty
+    .. white spaces and/or comments are taken as unknown syntax
     */
     error ("unknown syntax");
     return RGXERR;
@@ -415,7 +426,7 @@ int lex_read_definitions ( FILE * in ) {
 
 /*
 .. Naive way to look for the regex pattern at the beginning of the
-.. line. The regex will be stored in "buff".
+.. line. The regex will be stored in the buffer "rgx".
 */
 static
 int _pattern (FILE * in, char * rgx, size_t lim) {
@@ -551,20 +562,25 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
     error ("Did not encounter %%");
     return RGXERR;
   }
+
   error ("Incomplete rgx or missing action");
   return RGXERR;
 }
 
+/*
+.. Naive way to read action. The action should be put inside a '{' '}'
+.. block and the starting '{' should be placed in the same line of
+.. the regex pattern
+*/
 static
-int _action (FILE * fp, char * buff, size_t lim) {
-  /* fixme : remove the limit. use realloc() to handle large buffer */
-
+int _action (FILE * in, char * buff, size_t lim) {
   int c, j = 0, depth = 0, quote = 0, escape = 0;
+
   /*
   .. Consume white spaces before encountering '{' i.e start of action.
   .. Warning : Action need to be in the same line as regex.
   */
-  while ( (c = fgetc(fp)) != EOF ) {
+  while ( (c = fgetc(in)) != EOF ) {
     if ( c == '{' ) {
       depth++;
       buff [j++] = '{';
@@ -582,10 +598,10 @@ int _action (FILE * fp, char * buff, size_t lim) {
   .. The whole action block will be stored inside 'buff' unless
   .. you run out of limit.
   */
-  while ( (c = fgetc(fp)) != EOF ) {
+  while ( (c = fgetc(in)) != EOF ) {
     buff[j++] = (char) c;
     if (j == lim) {
-      error ( "lxr grammar: action buff limit" );
+      error ( "action buff limit" );
       return RGXERR;
     }
 
@@ -619,29 +635,25 @@ int _action (FILE * fp, char * buff, size_t lim) {
   buff[j] = '\0';
 
   if (depth) {
-    error ("lxr grammar : incomplete action. Missing '}'");
+    error ("Incomplete action. Missing '}'");
     return RGXERR;
   }
 
-  while ( (c = fgetc(fp)) != EOF ) {
+  /*
+  .. Consume white spaces after the action '{' .. '}'
+  */
+  while ( (c = fgetc(in)) != EOF ) {
     if ( c == '\n') {
       line++;
       break;
     }
     if ( ! (c == ' ' || c == '\t' ) ) {
-      error ("lxr grammar : unexpected character after action");
+      error ("unexpected character after action");
       return RGXERR;
     }
   }
   return 0;
 }
-
-typedef struct Action {
-  char * rgx, * action;
-  int line;
-} Action;
-
-static Stack * actions = NULL;
 
 static inline 
 void pattern_action ( const char * r, const char * a, int line) {
@@ -686,10 +698,12 @@ int lex_read_rules ( FILE * in ) {
   return 0;  
 }
 
+/*
+.. Create DFA from regex patterns, create the compressed tables for
+.. lexical analysis and print the tables
+*/
 int lex_print_tables () {
-  /*
-  .. Create DFA from regex patterns
-  */
+
   size_t nrgx = ( actions->len / sizeof (void *) );
   char ** rgx = allocate ( nrgx * sizeof (char *) );
   Action ** A = (Action **) actions->stack;
@@ -697,16 +711,13 @@ int lex_print_tables () {
     rgx [i] = A[i]->rgx;
   
   DState * dfa = NULL;
-  if (rgx_lexer_dfa (rgx, nrgx, &dfa) < 0) {
+  if (rgx_lexer_dfa (rgx, nrgx, &dfa) < 0) {       /* Minimised DFA */
     error ("failed to create a minimal dfa");
     return RGXERR;
   }
 
-  /*
-  .. create compressed tables from DFA
-  */
   int ** tables, * len;
-  if (dfa_tables (&tables, &len) < 0) {
+  if (dfa_tables (&tables, &len) < 0) {  /* comprssd tbles from DFA */
     error ("Table size Out of memory limit");
     return RGXOOM;
   }
@@ -789,8 +800,8 @@ int lex_print_lxr_fnc () {
   Action ** A = (Action **) actions->stack;
   for (int i=0; i < nrgx; ++i) {
     fprintf (out, "\n      case %d :", i+1);
-    #define LXR_DEBUG
     #ifdef LXR_DEBUG
+    (void) A;
     fprintf (out,
       "\n        printf (\"\\ntoken [%3d] %%s\", lxrstrt);"
       "\n        break;", i+1);

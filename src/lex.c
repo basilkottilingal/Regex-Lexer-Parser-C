@@ -20,6 +20,9 @@
 #include "allocator.h"
 #include "lexer.h"
 #include "regex.h"
+#include "class.h"
+
+static FILE * out;
 
 /*
 .. Flex macro that holds a regex pattern. Macro naming should follow
@@ -41,21 +44,11 @@ typedef struct Macro {
 /*
 .. A code snippet is defined in the definitions section in either of
 .. the two forms as given below
-..
-.. %top{
-..   #include <stdio.h>
-..   #include "func.h"
-.. }
 .. 
 .. %{
 ..   #include <stdio.h>
 ..   #include "func.h"
 .. %}
-..
-.. The difference is that %top{} snippets will be forcefully placed at
-.. the top and the %{%} snippet at the bottom. So if multiple %top{}
-.. snippets appear, the last one in the lex file will be forced on the
-.. top of the generated lexer file.
 */
 
 typedef struct Snippet {
@@ -286,9 +279,11 @@ static int macro_new (char * macro, char * pattern) {
 
   if ( ! ( (rgx [0] == '[' && rgx [status-1] == ']') ||
        (rgx [0] == '(' && rgx [status-1] == ')') ) ) {
-    error ("warning : macro %s recommended in ( )", macro);
+    error ("warning : bracket, ( ), suggested for macro %s", macro);
   }
+  #if 0
   printf ("\nmacro %s rgx %s", macro, rgx); fflush (stdout);
+  #endif
   
   return 0;
 }
@@ -500,7 +495,9 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
             return RGXERR;
           return EMPTY;       /* Empty line, with just white spaces */
         }
+        #if 0
         printf ("\npattern  %s", rgx); fflush (stdout);
+        #endif
         return 0;
       case '%' :
         if (len == 2 && end)
@@ -666,7 +663,10 @@ int lex_read_rules ( FILE * in ) {
     status = _pattern (in, rgx, sizeof (rgx));
     if ( status == EOF ) break;
     if ( status == EMPTY ) continue;
-    if ( status == RGXERR ) return RGXERR;
+    if ( status == RGXERR ) {
+      error ("failed reading rule-action near line %d", line);
+      return RGXERR;
+    }
     if ( status == NOACTION ) {
       pattern_action (rgx, "", cline);
       continue;
@@ -676,14 +676,20 @@ int lex_read_rules ( FILE * in ) {
 
     /* Read the action for the above regex pattern */
     status = _action (in, action, sizeof (action));
-    if ( status == RGXERR ) return RGXERR;
+    if ( status == RGXERR ) {
+      error ("failed reading rule-action near line %d", line);
+      return RGXERR;
+    }
 
     pattern_action (rgx, action, cline);
   }
   return 0;  
 }
 
-int lex_tables () {
+int lex_print_tables () {
+  /*
+  .. Create DFA from regex patterns
+  */
   size_t nrgx = ( actions->len / sizeof (void *) );
   char ** rgx = allocate ( nrgx * sizeof (char *) );
   Action ** A = (Action **) actions->stack;
@@ -697,21 +703,13 @@ int lex_tables () {
   }
 
   /*
-  .. print all the tables used by lexer function
+  .. create compressed tables from DFA
   */
   int ** tables, * len;
   if (dfa_tables (&tables, &len) < 0) {
     error ("Table size Out of memory limit");
     return RGXOOM;
   }
-
-  /*
-  .. fixme : (a) Optimize, (b) give option to customize datatype,
-  .. (c) Make sure, lexer can run on any system (atleast linux),
-  .. (d) boundary assertion still not available. (e) Can you
-  .. add boundary assertion BOL, EOL, EOF as alphabet/transition
-  .. input outside [0x00, 0xFF].
-  */
 
   char * names [] = {
     "check", "next", "base", "accept", "def", "meta", "class"
@@ -724,20 +722,26 @@ int lex_tables () {
 
   int nclass = len [5], * class = tables [6];
    
-  /*
-  fprintf ( out, "\n#define lxrNELclass  %d", class ['\n']);
-  fprintf ( out, "\n#define lxrEOLclass  %d", EOL_CLASS);
-  fprintf ( out, "\n#define lxrEOFclass  %d", BOL_CLASS);
-  fprintf ( out, "\n#define lxrEOBclass  %d", 0);
-  fprintf ( out, "\n#define LXRCLASS(c)  ( lxr_class [c] )");
-  .. Copies the whole file "src/source.c" at the top of the
-  .. lexer generator file
-  if (lexer_head (out)) {
-    error ("lxr : failed writing lexer head");
-    return RGXERR;
-  }
-  */
-FILE * out = stdout;
+  fprintf ( out, 
+    "\n#define lxr_eq_class(c)  ( lxr_class [c] )"
+    "\n#define lxr_nclass       %3d   /* num of eq classes */"
+    "\n#define lxr_nel_class    %3d   /* new line  '\\n'    */"
+    "\n/*"
+    "\n.. Equivalence class for special symbols outside [0x00, 0xFF]"
+    "\n*/"
+    "\n#define lxr_eob_class    %3d   /* end of buffer     */"
+    "\n#define lxr_eol_class    %3d   /* end of line       */"
+    "\n#define lxr_eof_class    %3d   /* end of file       */",
+    nclass, class ['\n'], EOB_CLASS, EOL_CLASS, BOL_CLASS );
+
+  fprintf ( out, 
+    "\n\n/*"
+    "\n.. Accept state used internally. States [1, %d] are reserved"
+    "\n.. for tokens listed in the lex source file"
+    "\n*/"
+    "\n#define lxr_eob_state    %3d   /* end of buffer     */"
+    "\n#define lxr_eof_state    %3d   /* end of file       */",
+    (int) nrgx, 0, 1 );
 
   /*
   .. write all tables, before main lexer function
@@ -754,21 +758,136 @@ FILE * out = stdout;
     }
     fprintf ( out, "\n};" );
   }
+
+  return 0;
 }
 
-int read_lex_input (FILE * fp) {
+int lex_print_lxr_fnc () {
+  char buf[BUFSIZ];
+  size_t n;
+  FILE *in = fopen("../src/tokenize.c", "r");
+
+  if (!in)
+    return RGXERR;
+
+  while (fgets (buf, sizeof buf, in)) {
+    size_t l = strlen (buf);
+    if (buf [l-1] != '\n') {
+      error ("insuff buff"); return RGXOOM;
+    }
+    int j = 0; char c;
+    while ( (c = buf [j++]) != '\0' ) {
+      if ( c == '/' && buf [j] == '*' && buf [j+1] == '%' ) {
+        j = -1; break;
+      }
+    }
+    if (j == -1) break;
+    if (fputs (buf,out) == EOF)
+      return RGXERR;
+  }
+  size_t nrgx = ( actions->len / sizeof (void *) );
+  Action ** A = (Action **) actions->stack;
+  for (int i=0; i < nrgx; ++i) {
+    fprintf (out, "\n      case %d :", i+1);
+    #define LXR_DEBUG
+    #ifdef LXR_DEBUG
+    fprintf (out,
+      "\n        printf (\"\\ntoken [%3d] %%s\", lxrstrt);"
+      "\n        break;", i+1);
+    #else
+    fprintf (out,
+      "\n        %s\n        break;", A[i]->action);
+    #endif
+  }
+
+  fprintf (out, "\n");
+  while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
+    if (fwrite(buf, 1, n, out) != n)
+      return RGXERR;
+  }
+
+  fclose(in);
+  return 0;
+}
+
+void lex_print_snippets () {
+  Snippet * s = snippet_head;
+  while (s) {
+    fprintf (out, "%s", s->code);
+    s = s->next;
+  }
+}
+  
+int lex_print_source () {
+  char buf[BUFSIZ];
+  size_t n;
+  FILE * in = fopen("../src/source.c", "r");
+  if (!in)
+    return RGXERR;
+
+  while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
+    if (fwrite(buf, 1, n, out) != n)
+      return RGXERR;
+  }
+
+  fclose(in);
+  return 0;
+}
+
+int lex_print_last (FILE * in) {
+  char buff [BUFSIZ];
+  size_t n;
+  while ((n = fread(buff, 1, sizeof buff, in)) > 0) {
+    if (fwrite(buff, 1, n, out) != n)
+      return RGXERR;
+  }
+  return 0;
+}
+
+int read_lex_input (FILE * fp, FILE * _out) {
+  if (!fp) {
+    error ("missing in/out");
+    return RGXERR;
+  }
+  out = _out ? _out : stdout;
+
   line = 0;
+
   if (lex_read_definitions (fp) < 0) {
     error ("failed reading defintion section. line %d", line);
     return RGXERR;
   }
+
   if (lex_read_rules (fp) < 0) {
     error ("failed reading rules section. line %d", line);
     return RGXERR;
   }
-  fprintf (stderr, "\nwarnings ");
-  errors ();
 
-  lex_tables ();
+  errors (); /* Flush any warnings */
+
+  lex_print_snippets ();
+
+  if (lex_print_source () < 0) {
+    error ("lxr : failed writing lexer head");
+    return RGXERR;
+  }
+
+  if (lex_print_tables () < 0) {
+    error ("failed creating tables");
+    return RGXERR;
+  }
+
+  if (lex_print_lxr_fnc () < 0) {
+    error ("failed writing lexer function");
+    return RGXERR;
+  }
+
+  lex_print_last (fp);
+
+  #ifdef LXR_DEBUG
+  fprintf (out,
+    "\nint main () {\n  lxr_lex ();\n  return 0;\n}" );
+  #endif
+
   return 0;
 }

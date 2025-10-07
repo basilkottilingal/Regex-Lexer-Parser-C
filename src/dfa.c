@@ -339,7 +339,9 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
   if ( rgx_dfa_tree (root, &Q) < 0 || !Q )return RGXERR;
   int nq = Q->len / sizeof (void *), qsize = BITBYTES(nq);
   DState ** q = (DState **) Q->stack, * next;
+  #if 0
   printf ("\n |Q| %d ", nq); fflush (stdout);
+  #endif
 
   if (ntokens > nq) {
     error ("dfa : Bad Lexer Design. "
@@ -460,20 +462,16 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
         for ( int l=0; l<W->len/sizeof(void *); ++l) {
           BITCMP ( Y, w[l], issame, qsize );
           if (issame) {                            /* if (Y ∈ W)    */
-            /*FREE (w[l]);*/ w[l] = COPY (Y1) ; PUSH (W, COPY(Y2));
+            FREE ( w[l], qsize ); w[l] = COPY (Y1) ; PUSH (W, COPY(Y2));
             k = l; break;
           }
         }
         if (k<0)                                   /* if (Y ∉ W)    */
           PUSH ( W, count1 <= count2 ? COPY(Y1) : COPY(Y2) );
-        /*FREE ( Y );*/
+        FREE ( Y, qsize );
       }
     }
   }
-
-  #if 0
-  print_partition (P, qsize);
-  #endif
 
   /*
   .. Partition of the set Q is now stored in P.
@@ -482,7 +480,11 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
   .. (iii) collectively exhaustive, i.e,  union of p_i is Q
   */
   stack_free(W); stack_free (pool);
-  int np = P->len/sizeof (void *); printf ("|Q'| %d", np);
+  int np = P->len/sizeof (void *);
+  #if 0
+  print_partition (P, qsize);
+  printf ("|Q'| %d", np);
+  #endif
   dfa [0] = q[nq-1];
   int rval = ( nq >= np ) ?
     dfa_minimal( Q, P, dfa) :

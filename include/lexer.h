@@ -20,6 +20,6 @@
   .. (d) Empty lines are allowed. 
   */
   int lxr_generate (FILE * in, FILE * out);
-  int read_lex_input (FILE * in);
+  int read_lex_input (FILE * in, FILE * out);
 
 #endif

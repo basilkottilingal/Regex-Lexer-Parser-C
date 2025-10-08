@@ -10,16 +10,16 @@
 #include <stdlib.h>
 #include <string.h>
 
-static char * lxrEOF = NULL;
-static FILE * lxrin = NULL;
+static char * lxr_eof = NULL;
+static FILE * lxr_in = NULL;
 
-extern void lxrin_set (FILE *fp) {
+extern void lxr_in_set (FILE *fp) {
   if (fp == NULL) {
-    fprintf (stderr, "Invalid lxrin");
+    fprintf (stderr, "Invalid lxr_in");
     fflush (stderr);
     exit (-1);
   }
-  lxrin = fp;
+  lxr_in = fp;
 }
 
 /*
@@ -28,15 +28,15 @@ extern void lxrin_set (FILE *fp) {
 .. to use the signature of the malloc/realloc/free functions in stdlib
 */
 #ifndef LXR_ALLOC
-  #define LXR_ALLOC(_s_)        malloc  (_s_)
-  #define LXR_REALLOC(_a_,_s_)  realloc (_a_, _s_)
-  #define LXR_FREE(_a_)         free (_a_)
+  #define lxr_alloc(_s_)        malloc  (_s_)
+  #define lxr_realloc(_a_,_s_)  realloc (_a_, _s_)
+  #define lxr_free(_a_)         free (_a_)
 #endif
-static char lxrdummy[3] = { '\n', '\0', '\0' };
-static char * lxrbuff = lxrdummy;                 /* current buffer */
-static char * lxrstrt = lxrdummy + 1;        /* start of this token */
-static char * lxrbptr = lxrdummy + 1;       /* buffer read location */
-static size_t lxrsize = 1;                     /* current buff size */
+static char lxr_dummy[3] = { '\n', '\0', '\0' };
+static char * lxr_buff = lxr_dummy;                 /* current buffer */
+static char * lxr_start = lxr_dummy + 1;        /* start of this token */
+static char * lxr_bptr = lxr_dummy + 1;       /* buffer read location */
+static size_t lxr_size = 1;                     /* current buff size */
 
 /*
 .. If user hasn't given a character input function, lxr_input() is
@@ -45,7 +45,7 @@ static size_t lxrsize = 1;                     /* current buff size */
 ..   int lxr_input ( void );
 */
 #ifndef LXR_INPUT
-  #define LXR_INPUT lxr_input ()
+  #define LXR_INPUT
 
   #ifndef LXR_BUFF_SIZE
     #define LXR_BUFF_SIZE  1<<16     /* default buffer size : 16 kB */
@@ -58,9 +58,9 @@ static size_t lxrsize = 1;                     /* current buff size */
     /*
     .. Create a new buffer as we hit the end of the current buffer.
     */
-    if (lxrin == NULL) lxrin = stdin;
+    if (lxr_in == NULL) lxr_in = stdin;
 
-    size_t non_parsed = lxrbptr - lxrstrt;
+    size_t non_parsed = lxr_bptr - lxr_start;
     /*
     .. "non_parsed" : Bytes already consumed by automaton but yet
     .. to be accepted. These bytes will be copied to the new buffer.
@@ -68,24 +68,24 @@ static size_t lxrsize = 1;                     /* current buff size */
     .. (as of now, reallocate if non_parsed == 100% of buffer)
     */
     char * mem;
-    if ( lxrstrt == lxrbuff ) {
+    if ( lxr_start == lxr_buff ) {
       /*
       .. Current buffer not sufficient for the token being read.
       .. Buffer size is doubled
       */
-      lxrsize *=2;
-      mem  = LXR_REALLOC ( lxrbuff - sizeof (void *),
-        lxrsize + 2 + sizeof (void *) );
+      lxr_size *=2;
+      mem  = lxr_realloc ( lxr_buff - sizeof (void *),
+        lxr_size + 2 + sizeof (void *) );
     }
     else {
       /*
       .. We add the buffer to the linked list of buffers, so at the
       .. end of the lexing pgm, you can remove each blocks.
       */
-      lxrsize = (size_t) LXR_BUFF_SIZE;
-      mem  = LXR_ALLOC ( lxrsize + 2 + sizeof (void *) );
-      *( (char **) mem ) = lxrbuff;
-      memcpy (mem + sizeof (void *), lxrstrt, non_parsed);
+      lxr_size = (size_t) LXR_BUFF_SIZE;
+      mem  = lxr_alloc ( lxr_size + 2 + sizeof (void *) );
+      *( (char **) mem ) = lxr_buff;
+      memcpy (mem + sizeof (void *), lxr_start, non_parsed);
     }
 
     if (mem == NULL) {
@@ -97,24 +97,24 @@ static size_t lxrsize = 1;                     /* current buff size */
     .. Update the pointers to the current buffer, last accepted byte
     .. and current reading ptr
     */
-    lxrbuff = mem + sizeof (void *);
-    lxrstrt = lxrbuff;
-    lxrbptr = lxrbuff + non_parsed;
+    lxr_buff = mem + sizeof (void *);
+    lxr_start = lxr_buff;
+    lxr_bptr = lxr_buff + non_parsed;
 
     /*
     .. Read from input file which the buffer can hold, or till the
     .. EOF is encountered
     */
     size_t bytes = non_parsed +
-      fread ( lxrbptr, 1, lxrsize - non_parsed, lxrin );
-    if (bytes < lxrsize) {
-      if (feof (lxrin)) lxrEOF = & lxrbuff [bytes];
+      fread ( lxr_bptr, 1, lxr_size - non_parsed, lxr_in );
+    if (bytes < lxr_size) {
+      if (feof (lxr_in)) lxr_eof = & lxr_buff [bytes];
       else {
         fprintf (stderr, "LXR : fread failed !!");
         exit (-1);
       }
     }
-    lxrbuff [bytes] = lxrbuff [bytes+1] = '\0';
+    lxr_buff [bytes] = lxr_buff [bytes+1] = '\0';
   }
 
   /*
@@ -128,21 +128,20 @@ static size_t lxrsize = 1;                     /* current buff size */
     .. the buffer. It's because you need to look ahead to look for
     .. boundary assertion patterns like abc$
     */
-    if ( lxrbptr[1] == '\0' && lxrEOF == NULL )
+    if ( lxr_bptr[1] == '\0' && lxr_eof == NULL )
       lxr_buffer_update ();
 
     /*
     .. return EOF without consuming, so you can call lxr_input () any
     .. number of times, each time returning EOF. 
     */
-    if (lxrbptr == lxrEOF)
+    if (lxr_bptr == lxr_eof)
       return EOF;
 
     /*
     .. A character in [0x00, 0xFF]
     */
-    if (*lxrbptr)
-      return (int) ( (unsigned char) *lxrbptr++ );
+    return (int) ( (unsigned char) *lxr_bptr++ );
       
   }
 
@@ -153,9 +152,9 @@ void lxr_clean () {
   .. Free all the memory blocks created for buffer.
   .. User required to run this at the end of the program
   */
-  while ( lxrbuff != lxrdummy ) {
-    char * mem = lxrbuff - sizeof (char *);
-    lxrbuff = * (char **) mem ;
-    LXR_FREE (mem);
+  while ( lxr_buff != lxr_dummy ) {
+    char * mem = lxr_buff - sizeof (char *);
+    lxr_buff = * (char **) mem ;
+    lxr_free (mem);
   }
 }

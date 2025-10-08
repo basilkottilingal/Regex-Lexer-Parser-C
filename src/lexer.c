@@ -259,7 +259,7 @@ int lexer_tail (FILE * out, Stack * actions) {
     #ifdef LXR_DEBUG
     fprintf (out,
       "\n      case %d :"
-      "\n        printf (\"\\ntoken [%3d] %%s\", lxrstrt);"
+      "\n        printf (\"\\ntoken [%3d] %%s\", lxr_start);"
       "\n        break;", i+1, i+1);
     #else
     fprintf (out,
@@ -334,11 +334,33 @@ int lxr_generate (FILE * in, FILE * out) {
 
   int nclass = len [5], * class = tables [6];
    
-  fprintf ( out, "\n#define lxrNELclass  %d", class ['\n']);
-  fprintf ( out, "\n#define lxrEOLclass  %d", EOL_CLASS);
-  fprintf ( out, "\n#define lxrEOFclass  %d", BOL_CLASS);
-  fprintf ( out, "\n#define lxrEOBclass  %d", 0);
-  fprintf ( out, "\n#define LXRCLASS(c)  ( lxr_class [c] )");
+  fprintf ( out, 
+    "\n#define lxr_eq_class(c)  ( lxr_class [c] )"
+    "\n#define lxr_nclass       %3d   /* num of eq classes */"
+    "\n#define lxr_nel_class    %3d   /* new line  '\\n'    */"
+    "\n/*"
+    "\n.. Equivalence class for special symbols outside [0x00, 0xFF]"
+    "\n*/"
+    "\n#define lxr_eob_class    %3d   /* end of buffer     */"
+    "\n#define lxr_eol_class    %3d   /* end of line       */"
+    "\n#define lxr_eof_class    %3d   /* end of file       */",
+    nclass, class ['\n'], EOB_CLASS, EOL_CLASS, BOL_CLASS );
+
+  fprintf ( out, 
+    "\n\n/*"
+    "\n.. DFA states"
+    "\n*/"
+    "\n#define lxr_start_state(_is_bol_)  (1 + _is_bol_)"
+    "\n#define lxr_reject_state           0");
+
+  fprintf ( out, 
+    "\n\n/*"
+    "\n.. Accept state used internally. States [1, %d] are reserved"
+    "\n.. for tokens listed in the lex source file"
+    "\n*/"
+    "\n#define lxr_eob_accept   %3d   /* end of buffer     */"
+    "\n#define lxr_eof_accept   %3d   /* end of file       */",
+    (int) nrgx, 0, 1 );
   /*
   .. Copies the whole file "src/source.c" at the top of the
   .. lexer generator file

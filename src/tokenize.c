@@ -10,31 +10,30 @@
 .. (f) accept value in [1, ntokens] for accepted tokens
 */
 
-static char * lxrholdloc = lxrdummy + 1; 
-static char lxrholdchar = '\0';
-static int  lxrBOLstatus = 1;
+static char * lxr_hold_loc = lxr_dummy + 1; 
+static char lxr_hold_char = '\0';
 #define LXR_MAXDEPTH    1
 #define LXRDEAD        -1
 
 int lxr_lex () {
-  int isEOF = 0;
+  int is_eof = 0;
+    
+  int lxr_bol_status = (lxr_hold_loc [-1] == '\n');
 
   do {                  /* Loop looking the longest token until EOF */
 
-    /* Place reading idx just after the last character of the token */
-    lxrbptr = lxrstrt = lxrholdloc;
-    lxrBOLstatus = (lxrholdloc [-1] == '\n');
-    *lxrstrt = lxrholdchar; /* put back the holding character       */
+    lxr_bptr = lxr_start = lxr_hold_loc;
+    *lxr_start = lxr_hold_char;   /* put back the holding character     */
 
     int uchar, class,       /* input character & it's class         */
-      state = lxrBOLstatus, /* start with 0/1 depending on BOL flag */
+      state = lxr_bol_status, /* start with 0/1 depending on BOL flag */
       last_state = LXRDEAD, /* if EOL transition failed, go back    */
       acc_token = 0,        /* last accepted token                  */
       acc_len = 0,          /* length of the last accepted state    */
       len = 0,              /* consumed length for the current      */
       depth,                /* depth of fallback                    */
-      lxrEOLstatus = 
-        ( lxrbptr == lxrEOF ) || (*lxrbptr == '\n');
+      lxr_eol_status = 
+        ( lxr_bptr == lxr_eof ) || (*lxr_bptr == '\n');
 
     do {                            /* Transition loop until reject */
 
@@ -43,24 +42,24 @@ int lxr_lex () {
       .. from the file, we do the EOL transition if the next byte is
       .. '\n' or has reached EOF
       */
-      if (lxrEOLstatus) {
-        class = lxrEOLclass; lxrEOLstatus = 0;
+      if (lxr_eol_status) {
+        class = lxr_eol_class; lxr_eol_status = 0;
         last_state = state;
       }
       else {
         /*
         .. Consume the byte from file/buffer and update EOL status
         */
-        if ( *lxrbptr == '\0' && lxrEOF == NULL )
+        if ( *lxr_bptr == '\0' && lxr_eof == NULL )
           lxr_buffer_update ();
-        if (lxrbptr == lxrEOF) {
-          if (len == 0) isEOF = 1;
+        if (lxr_bptr == lxr_eof) {
+          if (len == 0) is_eof = 1;
           break;
         }
-        uchar = (unsigned char) *lxrbptr++;
+        uchar = (unsigned char) *lxr_bptr++;
         len++;
         class = lxr_class [uchar];
-        lxrEOLstatus = ( lxrbptr == lxrEOF ) || (*lxrbptr == '\n');
+        lxr_eol_status = ( lxr_bptr == lxr_eof ) || (*lxr_bptr == '\n');
       }
 
       /*
@@ -98,7 +97,7 @@ int lxr_lex () {
       .. We undo the EOL transition and proceed further looking for
       .. longer tokens.
       */
-      if (class == lxrEOLclass)
+      if (class == lxr_eol_class)
         state = last_state;
 
     } while ( state != LXRDEAD ); 
@@ -106,9 +105,11 @@ int lxr_lex () {
     /*
     .. Update with new holding character & it's location.
     */
-    lxrholdloc = lxrstrt + (acc_len ? acc_len : 1);
-    lxrholdchar = *lxrholdloc;
-    *lxrholdloc = '\0';
+    lxr_hold_loc = lxr_start + (acc_len ? acc_len : 1);
+    lxr_hold_char = *lxr_hold_loc;
+    *lxr_hold_loc = '\0';
+
+    lxr_bol_status = (lxr_hold_loc [-1] == '\n');
 
     /*
     .. handling accept/reject. In case of accepting, corresponding
@@ -125,14 +126,13 @@ int lxr_lex () {
 
     do {   /* Just used a newer block to avoid clash of identifiers */
       switch ( acc_token ) {
-        /*% replace this line with "case <token> : <action> break; %*/
+        /*% replace this line with case <token> : <action>  break; %*/
 
         default :                                /* Unknown pattern */
-          /*% if (isEOF) replace this line with any snippet reqd   %*/
       }
     } while (0);
 
-  } while (!isEOF);    /* Will stop when the first character is EOF */
+  } while (!is_eof);    /* Will stop when the first character is EOF */
 
   return EOF;
 }

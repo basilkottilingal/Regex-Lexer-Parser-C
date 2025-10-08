@@ -6,7 +6,7 @@
 int main () {
   FILE * fp = fopen ("../src/source.c", "r");
 
-  lxrin_set (fp);
+  lxr_in_set (fp);
 
   int c;
   while ( (c = lxr_input ()) != EOF ) {

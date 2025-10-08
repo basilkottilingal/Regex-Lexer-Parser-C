@@ -128,14 +128,8 @@ uint32_t hash ( const char * key, uint32_t len ) {
   switch (len & 3) {
     case 3: 
       k ^= key[2] << 16;
-      #if defined(__GNUC__)  &&  (__GNUC__ >= 7)
-        __attribute__((fallthrough));
-      #endif
     case 2: 
       k ^= key[1] << 8;
-      #if defined(__GNUC__)  &&  (__GNUC__ >= 7)
-        __attribute__((fallthrough));
-      #endif
     case 1: 
       k ^= key[0];
       k *= 0xcc9e2d51;
@@ -216,7 +210,6 @@ static int macro_new (char * macro, char * pattern) {
       continue;
     }
     if ( (c = *ptr++) == ',' || ( c <= '9' && c >= '0' ) ) {
-      /* {,n} {m,n} {m} */
       COPY (start);
       continue;
     }
@@ -271,15 +264,12 @@ static int macro_new (char * macro, char * pattern) {
   */
   rgx [len] = '\0';
   int rpn [RGXSIZE];
-  int status = rgx_rpn (rgx, rpn);
-  if (status <= 0) {
+  len = rgx_rpn (rgx, rpn);       /* return rgx length if succesful */
+  if (len <= 0) {
     error ("cannot create rpn for regex %s in line %d", rgx, line);
     return RGXERR;
   }
-  /*
-  .. status = length of regex string. Remove trailing white spaces
-  */
-  rgx [status] = '\0';
+  rgx [len] = '\0';        /* Remove trailing white spaces (if any) */
 
   /*
   .. Insert macro to hashtable
@@ -294,8 +284,8 @@ static int macro_new (char * macro, char * pattern) {
   m->key = allocate_str (macro);
   m->rgx = allocate_str (rgx);
 
-  if ( ! ( (rgx [0] == '[' && rgx [status-1] == ']') ||
-       (rgx [0] == '(' && rgx [status-1] == ')') ) ) {
+  if ( ! ( (rgx [0] == '[' && rgx [len-1] == ']') ||
+       (rgx [0] == '(' && rgx [len-1] == ')') ) ) {
     error ("warning : bracket, ( ), suggested for macro %s", macro);
   }
   #if 0
@@ -747,11 +737,18 @@ int lex_print_tables () {
 
   fprintf ( out, 
     "\n\n/*"
+    "\n.. DFA states"
+    "\n*/"
+    "\n#define lxr_start_state(_is_bol_)  (1 + _is_bol_)"
+    "\n#define lxr_reject_state           0");
+
+  fprintf ( out, 
+    "\n\n/*"
     "\n.. Accept state used internally. States [1, %d] are reserved"
     "\n.. for tokens listed in the lex source file"
     "\n*/"
-    "\n#define lxr_eob_state    %3d   /* end of buffer     */"
-    "\n#define lxr_eof_state    %3d   /* end of file       */",
+    "\n#define lxr_eob_accept   %3d   /* end of buffer     */"
+    "\n#define lxr_eof_accept   %3d   /* end of file       */",
     (int) nrgx, 0, 1 );
 
   /*

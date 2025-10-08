@@ -462,7 +462,9 @@ hopcroft ( State * nfa, DState ** dfa, int nnfa, int ntokens ) {
         for ( int l=0; l<W->len/sizeof(void *); ++l) {
           BITCMP ( Y, w[l], issame, qsize );
           if (issame) {                            /* if (Y ∈ W)    */
-            FREE ( w[l], qsize ); w[l] = COPY (Y1) ; PUSH (W, COPY(Y2));
+            FREE ( w[l], qsize );
+            w[l] = COPY (Y1) ;
+            PUSH (W, COPY(Y2));
             k = l; break;
           }
         }
@@ -576,7 +578,7 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 static Row ** rows_create () {
   #define EMPTY -1
   int m = nstates, n = nclass;
-  Row ** rows = allocate ( (m+1) * sizeof (Row *));
+  Row ** rows = allocate ( (m+1) * sizeof (Row *) );
   for (int k=0; k<m;) {
     int nr = m - k;
     if (nr > PAGE_SIZE / sizeof (Row)) nr = PAGE_SIZE / sizeof (Row);
@@ -585,13 +587,13 @@ static Row ** rows_create () {
   }
   int stack [512];
   for (int s=0; s<m; ++s) {
-    int ntrans = 0, start = EMPTY;
+    int ntrans = 0;
     DState ** d = states[s]->next;
     for (int c = 0; c < n; ++c)
       if (d[c]) {
-        stack [ntrans++] = c; stack[ntrans++] = d[c]->i;
-        if (start == EMPTY) start = c;
+        stack [ntrans++] = c; stack [ntrans++] = d[c]->i;
       }
+
     /*
     .. A simple hashing involving first & last entries of the
     .. transition cache
@@ -624,6 +626,15 @@ int dfa_tables (int *** tables, int ** tsize) {
   if ( RGXMATCH (states[0]) || RGXMATCH (states[1]) ) {
     error ("zero length token not allowed");
     return RGXERR;
+  }
+
+  /*
+  .. Very special case, highly improbable. In case number of
+  .. classes for alphabets and EOB/EOF/EOL exceeds 256.
+  */
+  if (nclass > 256) {
+    error ("highle refined eq class. internal limit");
+    return RGXOOM;
   }
 
   /*

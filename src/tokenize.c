@@ -13,7 +13,7 @@
 static char * lxr_hold_loc = lxr_dummy + 1; 
 static char lxr_hold_char = '\0';
 #define LXR_MAXDEPTH    1
-#define LXRDEAD        -1
+#define LXRDEAD         0
 
 int lxr_lex () {
   int is_eof = 0;
@@ -26,7 +26,7 @@ int lxr_lex () {
     *lxr_start = lxr_hold_char;   /* put back the holding character     */
 
     int uchar, class,       /* input character & it's class         */
-      state = lxr_bol_status, /* start with 0/1 depending on BOL flag */
+      state = 1 + lxr_bol_status, /* start with 1/2 depending on BOL flag */
       last_state = LXRDEAD, /* if EOL transition failed, go back    */
       acc_token = 0,        /* last accepted token                  */
       acc_len = 0,          /* length of the last accepted state    */

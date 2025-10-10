@@ -555,7 +555,8 @@ int rgx_lexer_dfa ( char ** rgx, int nr, DState ** dfa ) {
     }
     State * nfa = out [nr]; assert (nfa->id == NFAEPS);
     nfa = nfa->out[0];      assert (nfa->id == BOL_CLASS);
-    nfa->out[0]->id = EOF_CLASS; /* replace class['x'] by EOF class */
+    nfa = nfa->out[0];      assert (nfa->id == class ['x']);
+    nfa->id = EOF_CLASS;         /* replace class['x'] by EOF class */
     nt += n;
   }
   *nfa = (State) {
@@ -593,7 +594,8 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 
 static Row ** rows_create () {
   #define EMPTY -1
-  int m = nstates, n = nclass;
+  #define HASH  2166136261u
+  int m = nstates + 1, n = nclass;
   Row ** rows = allocate ( (m+1) * sizeof (Row *) );
   for (int k=0; k<m;) {
     int nr = m - k;
@@ -602,34 +604,48 @@ static Row ** rows_create () {
     while (nr--) rows [k++] = mem++;
   }
   int stack [512];
-  for (int s=0; s<m; ++s) {
+  DState * eof = states[0]->next [EOF_CLASS];
+  for (int s=0; s<nstates; ++s) {
     int ntrans = 0;
     DState ** d = states[s]->next;
-    for (int c = 0; c < n; ++c)
+    for (int c = 0; c < n; ++c) 
       if (d[c]) {
-        stack [ntrans++] = c; stack [ntrans++] = d[c]->i;
+        stack [ntrans++] = c;
+        stack [ntrans++] = d[c]->i + 1; /* reserve 0 : dead state */
       }
 
     /*
     .. A simple hashing involving first & last entries of the
     .. transition cache
     */
-    uint32_t h = 2166136261u;
+    uint32_t h = HASH;
     if ( ntrans) {
       h = (h ^ (uint32_t) stack [0]) * 16777619u;
       h = (h ^ (uint32_t) stack [1]) * 16777619u;
       h = (h ^ (uint32_t) stack [ntrans-1]) * 16777619u;
       h = (h ^ (uint32_t) stack [ntrans-2]) * 16777619u;
     }
+    if (states [s] != eof) {
+      /* Add EOB transition to all DFA state, except EOF state*/
+      stack [ntrans++] = EOB_CLASS; stack [ntrans++] = m;
+    }
     int * copy = allocate (sizeof (int) * ntrans);
     memcpy ( copy, stack, sizeof (int) * ntrans );
     *(rows[s]) = (Row) {
-      .s = s, .n = ntrans/2, .hash = h,
+      .s = s+1, .n = ntrans/2, .hash = h,
       .token = RGXMATCH (states [s]), .stack = copy
     };
   }
+
+  if (eof)
+    *(rows[nstates]) = (Row) {                      /* EOB state */
+      .s = m, .n = 0, .hash = HASH,
+      .token = RGXMATCH (eof) + 1,
+      .stack = allocate (0)
+    };
   return rows;
   #undef EMPTY
+  #undef HASH
 }
 
 int dfa_tables (int *** tables, int ** tsize) {
@@ -658,6 +674,7 @@ int dfa_tables (int *** tables, int ** tsize) {
   .. we switch off the transition from 0->1 by BOL_CLASS.
   */
   states [0]->next [ BOL_CLASS ] = NULL;
+printf ("HERE %p", states[0]->next [EOF_CLASS]); fflush(stdout);
 
   #if 0  
   int bol = 
@@ -671,7 +688,7 @@ int dfa_tables (int *** tables, int ** tsize) {
   int ** t = * tables = allocate ( 7 * sizeof (int *) );
   int * len = * tsize = allocate ( 7 * sizeof (int) );
 
-  int m = nstates, n = nclass;
+  int n = nclass, m = nstates + 1;  /* additional '1' for EOB state */
   len [2] = len [3] = len [4] = m;
   len [5] = n;  len [6] = 256;
 

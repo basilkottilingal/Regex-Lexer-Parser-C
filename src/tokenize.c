@@ -12,8 +12,6 @@
 .. (f) accept value in [1, ntokens] for accepted tokens
 */
 
-static char * lxr_hold_loc = lxr_dummy + 1; 
-static char lxr_hold_char = '\0';
 #define LXR_MAXDEPTH         1
 #define LXRDEAD              0
 #define lxr_not_rejected(s)  (s)    /* s != 0 */
@@ -21,11 +19,11 @@ static char lxr_hold_char = '\0';
 int lxr_lex () {
   int is_eof = 0;
     
-  int lxr_bol_status = (lxr_hold_loc [-1] == '\n');
+  int lxr_bol_status = (lxr_bptr [-1] == '\n');
 
   do {                  /* Loop looking the longest token until EOF */
 
-    lxr_bptr = lxr_start = lxr_hold_loc;
+    lxr_start = lxr_bptr;
     *lxr_start = lxr_hold_char;   /* put back the holding character     */
 
     int uchar, class,       /* input character & it's class         */
@@ -40,6 +38,7 @@ int lxr_lex () {
 
     do {                            /* Transition loop until reject */
 
+      #if 0
       /*
       .. Before running the transition corresponding to byte input
       .. from the file, we do the EOL transition if the next byte is
@@ -64,6 +63,12 @@ int lxr_lex () {
         class = lxr_class [uchar];
         lxr_eol_status = ( lxr_bptr == lxr_eof ) || (*lxr_bptr == '\n');
       }
+      #else
+
+      class = *lxr_bptr ? lxr_class [*lxr_bptr++] :
+        (lxr_bptr == lxr_eof) ? lxr_eof_class : lxr_eob_class; 
+      len++;
+      #endif
 
       /*
       .. find the transition corresponding to the class using check/
@@ -100,19 +105,21 @@ int lxr_lex () {
       .. We undo the EOL transition and proceed further looking for
       .. longer tokens.
       */
+      #if 0
       if (class == lxr_eol_class)
         state = last_state;
+      #endif
 
     } while ( lxr_not_rejected (state) ); 
+
 
     /*
     .. Update with new holding character & it's location.
     */
-    lxr_hold_loc = lxr_start + (acc_len ? acc_len : 1);
-    lxr_hold_char = *lxr_hold_loc;
-    *lxr_hold_loc = '\0';
-
-    lxr_bol_status = (lxr_hold_loc [-1] == '\n');
+    lxr_bptr = lxr_start + (acc_len ? acc_len : 1);
+    lxr_hold_char = *lxr_bptr;
+    *lxr_bptr = '\0';
+    lxr_bol_status = (lxr_bptr [-1] == '\n');
 
     /*
     .. handling accept/reject. In case of accepting, corresponding
@@ -130,7 +137,17 @@ int lxr_lex () {
     do {   /* Just used a newer block to avoid clash of identifiers */
       switch ( acc_token ) {
         /*% replace this line with case <token> : <action>  break; %*/
-
+        case lxr_eof_accept :
+          printf ("\nEOF");
+          lxr_bptr --;
+          lxr_bol_status = (lxr_start [-1] == '\n');
+          return 0;
+        case lxr_eob_accept :
+          printf ("\nEOB");
+          lxr_bptr --;
+          lxr_bol_status = (lxr_start [-1] == '\n'); //fixme : segfault if the whole 
+          lxr_buffer_update ();
+          break;
         default :                                /* Unknown pattern */
       }
     } while (0);

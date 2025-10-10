@@ -2,7 +2,9 @@
 
 /*
 .. table based tokenizer. Assumes,
-.. (a) state '0' is the starting dfa.
+.. (a) state '0' : REJECT
+..     state '1' is the starting dfa.
+..     state '2' is the starting dfa (BOL)
 .. (b) There is no zero-length tokens,
 .. (c) maximum depth of 1 for "def" (fallback) chaining.
 .. (d) Doesn't use meta class.
@@ -12,8 +14,9 @@
 
 static char * lxr_hold_loc = lxr_dummy + 1; 
 static char lxr_hold_char = '\0';
-#define LXR_MAXDEPTH    1
-#define LXRDEAD         0
+#define LXR_MAXDEPTH         1
+#define LXRDEAD              0
+#define lxr_not_rejected(s)  (s)    /* s != 0 */
 
 int lxr_lex () {
   int is_eof = 0;
@@ -26,14 +29,14 @@ int lxr_lex () {
     *lxr_start = lxr_hold_char;   /* put back the holding character     */
 
     int uchar, class,       /* input character & it's class         */
-      state = 1 + lxr_bol_status, /* start with 1/2 depending on BOL flag */
+      state = 1 + lxr_bol_status, /* start with 1 or 2 depending on BOL flag */
       last_state = LXRDEAD, /* if EOL transition failed, go back    */
       acc_token = 0,        /* last accepted token                  */
       acc_len = 0,          /* length of the last accepted state    */
       len = 0,              /* consumed length for the current      */
       depth,                /* depth of fallback                    */
       lxr_eol_status = 
-        ( lxr_bptr == lxr_eof ) || (*lxr_bptr == '\n');
+        ( lxr_bptr == lxr_eof ) || ( *lxr_bptr == '\n' );
 
     do {                            /* Transition loop until reject */
 
@@ -68,7 +71,7 @@ int lxr_lex () {
       .. the fallback
       */
       depth = 0;
-      while ( state != LXRDEAD && 
+      while ( lxr_not_rejected (state) && 
         ((int) lxr_check [lxr_base [state] + class] != state) ) {
         /*
         .. Note: (a) No meta class as of now. (b) assumes transition
@@ -83,9 +86,9 @@ int lxr_lex () {
       .. (a) Longest token (b) In case of clash use the first token
       .. defined in the lexer file
       */
-      if ( state != LXRDEAD ) {
+      if ( lxr_not_rejected (state) ) {
         state = (int) lxr_next [lxr_base[state] + class];
-        if ( state != LXRDEAD && lxr_accept [state] &&
+        if ( lxr_not_rejected (state) && lxr_accept [state] &&
           ( len > acc_len || (int) lxr_accept [state] < acc_token) )
         {
           acc_len = len;
@@ -100,7 +103,7 @@ int lxr_lex () {
       if (class == lxr_eol_class)
         state = last_state;
 
-    } while ( state != LXRDEAD ); 
+    } while ( lxr_not_rejected (state) ); 
 
     /*
     .. Update with new holding character & it's location.

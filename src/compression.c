@@ -18,6 +18,7 @@
 #define CHILD_THRESHOLD      0.9
 #define SMALL_THRESHOLD      5
 #define EMPTY                -1
+#define DEADSTATE            0
 #define MAXDEPTH             1
 
 /*
@@ -41,7 +42,6 @@ static int * def;
 static int nclass;                          /* number of eq classes */
 static int nstates;                             /* number of states */
 static int limit;                 /* allocated size of check & next */
-
 
 /*
 .. For a candidate state 'ps' which is already added to check[], see
@@ -78,19 +78,6 @@ int row_candidate ( Row * r, int ps, Delta residual [] ) {
   }
   return n;                                    /* size of residual. */
 }
-
-#if 0
-void debug (Row * r, int ps, Delta residual []) {
-
-  if(ps == EMPTY) return;
-  int nk = row_candidate (r, ps, residual);
-  printf("\n placing row %d def %d {\n", r->s, ps);
-  for (int i=0; i<nk;++i)
-    printf("(%d,%d) ", residual[i].c, residual[i].delta);
-  printf ("}");
-  //return n;                                  /* size of residual. */
-}
-#endif
 
 /*
 .. Look for a slot to insert a cache of (c, δ (s,c))
@@ -130,7 +117,7 @@ int row_insert ( Row * r, int ps, Delta residual [] ) {
 }
 
 /*
-.. Compare two sets, find intersection and set differences
+.. Count number of similar entries among two rows.
 */
 static inline
 int row_similarity ( Row * r, Row * c ) {
@@ -215,7 +202,22 @@ void row_print ( Row ** rows) {
 
 /*
 .. It is a heauristic approach. We have some rows of some density and
-.. size and we have to place t
+.. size and we have to place one row after the other, such that
+.. (a) when we insert a row, 'r, see if there is a suitable candidate
+.. row, 'p' which is already inserted. The candidate is chosen such a
+.. way that the number of entries common between the rows 'c' and 'p'
+.. are maximum. So we add only the entries which are not found in the
+.. candidate row. NOTE : (We have to consider REJECT transitions also,
+.. when considering the number of match/mismatch).
+.. Considering caches R(c), R(p), the cost of inserting c and then p,
+.. can be assumed as |R(c)| + |R(c)\R(p)| + |R(p)\R(c)|.
+.. (The third term on sum is for REJECT). So you can see, it can be
+.. ideal to insert smaller set first.
+.. (b) It's also intuitive to insert larger caches and later insert
+.. smaller caches in the empty slots.
+.. So following algorithm uses both technique. First insert few larger
+.. rows. Then other rows are inserted in the order of increasing cache
+.. size, and each time looking for a suitable parent row.
 */
 int rows_compression ( Row ** rows, int *** tables, 
   int ** tsize, int m, int n )
@@ -332,18 +334,27 @@ int rows_compression ( Row ** rows, int *** tables,
       break;
   }
 
-  /* dead state = 0 */
-  for (int i=0; i<tsize [0][2]; ++i)
-    if (base [i] == EMPTY) base [i] = 0;
-  for (int i=0; i<tsize [0][4]; ++i)
-    if (def [i] == EMPTY) def [i] = 0;
 
   deallocate (rows, (m+1)*sizeof (Row*));
 
   tsize [0][0] = tsize [0][1] = offset + n;
   tables [0][0] = check;  tables[0][1] = next;
 
+  for (int i=0; i<tsize [0][0]; ++i)
+    if (check [i] == EMPTY)
+      check [i] = DEADSTATE;
+  for (int i=0; i<tsize [0][4]; ++i)
+    if (def [i] == EMPTY)
+      def [i] = DEADSTATE;
+  /*
+  .. Now we have
+  .. State 0 : for  reject/dead state.
+  .. State 1 : start state
+  .. State 2 : start state (if BOL)
+  */
+
   return 0;
 }
 
 #undef EMPTY
+#undef DEADSTATE

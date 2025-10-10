@@ -54,7 +54,7 @@ void class_get ( int ** c, int * n ) {
   .. We reserve four equivalence classes at the end: BOL, EOL, EOF,
   .. and EOB (end of buffer)
   */
-  *c = class; *n = nclass + 4;
+  *c = class; *n = nclass + BCLASSES;
 }
 
 #define END  -1

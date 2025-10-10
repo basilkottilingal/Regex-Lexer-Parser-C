@@ -157,7 +157,7 @@ static State * state ( int id, State * a, State * b ) {
 */
 static Fragment state_class ( int * classes, int cmp ) {
   int stack [256], n = 0;
-  for (int i=0; i<nclass-2; ++i)            /* BOL/EOL are exempted */
+  for (int i=0; i<nclass-BCLASSES; ++i)
     if (classes[i] == cmp)
       stack [n++] = i;
 

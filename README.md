@@ -33,13 +33,14 @@ int len = rgx_nfa_match (nfa, "aac"); // returns > 0, if succesul
 | `$`      | End anchor   | Matches the **end of a line**                                           |
 | `[...]`  | Character class  | Matches **any one character** in the set                            |
 | `[^...]` | Negated character class  | Matches **any one character not** in the set                |
-| `\|`     | Alternation  | Matches **either of the pattern** before and after `\|` in the group    |
+| `\|`     | Alternation  | Matches **either of the pattern** before o after `\|` in the current group |
 | `()`     | Grouping     | Groups expressions as a single unit, affects alternation and repetition |
 | `*`      | Zero or more | Matches **zero or more** repetitions of the preceding expression        |
 | `+`      | One or more  | Matches **one or more** repetitions of the preceding expression         |
 | `?`      | Zero or one  | Matches **zero or one** occurrence of the preceding expression          |
 | `{n}`    | Exact repetition | Matches **exactly n** occurrences of the preceding expression       |
 | `{n,}`   | Lower-bounded repetition | Matches **n or more** occurrences                           | 
+| `{,m}`   | Upper-bounded repetition | Matches **atmost m** occurrences                            | 
 | `{n,m}`  | Bounded repetition   | Matches **between n and m** occurrences (inclusive)             |
 | `\`      | Escape | Removes special meaning from the next character (e.g., `\.` matches a literal `.`) |
 
@@ -49,10 +50,10 @@ foo\bar    { /* foo should be followed by bar */ }
 foo(?=bar) { /* foo should be followed by bar */ } 
 foo(?!bar) { /* foo shouldn't be followed by bar */ } 
 ```
-  4. NOTE : DOESN'T support EOF as in flex
-```lex
-<<EOF>>    { /* flex allows EOF */ }
-```
-
   So it's upto user to handle these look ahead patterns by appropriate alternative
   like using appropriate context sensitive parser,
+
+  4. NOTE : DOESN'T support EOF as in flex
+```lex
+<<EOF>>    { /* flex allows EOF action, but not allowed in this code */ }
+```

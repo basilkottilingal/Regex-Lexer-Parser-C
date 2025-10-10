@@ -332,6 +332,12 @@ int rows_compression ( Row ** rows, int *** tables,
       break;
   }
 
+  /* dead state = 0 */
+  for (int i=0; i<tsize [0][2]; ++i)
+    if (base [i] == EMPTY) base [i] = 0;
+  for (int i=0; i<tsize [0][4]; ++i)
+    if (def [i] == EMPTY) def [i] = 0;
+
   deallocate (rows, (m+1)*sizeof (Row*));
 
   tsize [0][0] = tsize [0][1] = offset + n;

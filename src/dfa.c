@@ -592,9 +592,16 @@ int rgx_dfa_match ( DState * dfa, const char * txt ) {
 .. .................................................................*/
 #include "compression.h"
 
+/*
+.. Create a stack of rows ( each row corresponds to a state ). We add
+.. 1 to the state number, so that we can use state id = 0 for REJECT.
+.. We also add EOB_CLASS transition to all states.
+*/
 static Row ** rows_create () {
-  #define EMPTY -1
-  #define HASH  2166136261u
+  #define EMPTY        -1
+  #define HASH         2166136261u
+  #define NEWSTATE(_s) (_s+1)
+
   int m = nstates + 1, n = nclass;
   Row ** rows = allocate ( (m+1) * sizeof (Row *) );
   for (int k=0; k<m;) {
@@ -603,15 +610,16 @@ static Row ** rows_create () {
     Row * mem = allocate (nr * sizeof (Row));
     while (nr--) rows [k++] = mem++;
   }
-  int stack [512];
+
+  int stack [512], eob_state = NEWSTATE (nstates), ntrans;
   DState * eof = states[0]->next [EOF_CLASS];
+
   for (int s=0; s<nstates; ++s) {
-    int ntrans = 0;
-    DState ** d = states[s]->next;
+    ntrans = 0; DState ** d = states[s]->next;
     for (int c = 0; c < n; ++c) 
       if (d[c]) {
         stack [ntrans++] = c;
-        stack [ntrans++] = d[c]->i + 1; /* reserve 0 : dead state */
+        stack [ntrans++] = NEWSTATE (d[c]->i);
       }
 
     /*
@@ -625,35 +633,41 @@ static Row ** rows_create () {
       h = (h ^ (uint32_t) stack [ntrans-1]) * 16777619u;
       h = (h ^ (uint32_t) stack [ntrans-2]) * 16777619u;
     }
+
     if (states [s] != eof) {
-      /* Add EOB transition to all DFA state, except EOF state*/
-      stack [ntrans++] = EOB_CLASS; stack [ntrans++] = m;
+      stack [ntrans++] = EOB_CLASS; /* Add EOB transition to all .. */
+      stack [ntrans++] = eob_state; /* .. states, except EOF state  */
     }
+
     int * copy = allocate (sizeof (int) * ntrans);
     memcpy ( copy, stack, sizeof (int) * ntrans );
     *(rows[s]) = (Row) {
-      .s = s+1, .n = ntrans/2, .hash = h,
+      .s = NEWSTATE (s), .n = ntrans/2, .hash = h,
       .token = RGXMATCH (states [s]), .stack = copy
     };
   }
 
   if (eof)
-    *(rows[nstates]) = (Row) {                      /* EOB state */
-      .s = m, .n = 0, .hash = HASH,
+    *(rows[nstates]) = (Row) {                         /* EOB state */
+      .s = eob_state, .n = 0, .hash = HASH,
       .token = RGXMATCH (eof) + 1,
       .stack = allocate (0)
     };
+  else
+    error ("warning : EOF transition not set for starting DFA");
+
   return rows;
+
   #undef EMPTY
+  #undef NEWSTATE
   #undef HASH
 }
 
 int dfa_tables (int *** tables, int ** tsize) {
 
   /*
-  .. A lexer cannot allow zero length tokens, because this
-  .. non-consuming token will run the lexing function
-  .. infinitely
+  .. A lexer cannot allow zero length tokens, because this non
+  .. consuming token will run the lexing function infinitely
   */
   if ( RGXMATCH (states[0]) || RGXMATCH (states[1]) ) {
     error ("zero length token not allowed");
@@ -661,11 +675,11 @@ int dfa_tables (int *** tables, int ** tsize) {
   }
 
   /*
-  .. Very special case, highly improbable. In case number of
-  .. classes for alphabets and EOB/EOF/EOL exceeds 256.
+  .. Very special case, highly improbable. In case number of classes
+  .. for alphabets + {EOB, EOF, EOL, EOB} exceeds 256.
   */
   if (nclass > 256) {
-    error ("highle refined eq class. internal limit");
+    error ("highly refined eq class. internal limit");
     return RGXOOM;
   }
 
@@ -674,23 +688,14 @@ int dfa_tables (int *** tables, int ** tsize) {
   .. we switch off the transition from 0->1 by BOL_CLASS.
   */
   states [0]->next [ BOL_CLASS ] = NULL;
-printf ("HERE %p", states[0]->next [EOF_CLASS]); fflush(stdout);
-
-  #if 0  
-  int bol = 
-    states[0]->next [BOL_CLASS] ? states[0]->next [BOL_CLASS]->i : -1;
-  printf ("\nstate after BOL transition %d", bol);
-  if (bol != -1) {
-    printf ("\n BOL accept %d", RGXMATCH (states[bol]));
-  }
-  #endif
-
   int ** t = * tables = allocate ( 7 * sizeof (int *) );
   int * len = * tsize = allocate ( 7 * sizeof (int) );
 
   int n = nclass, m = nstates + 1;  /* additional '1' for EOB state */
-  len [2] = len [3] = len [4] = m;
+  len [2] = len [3] = len [4] = m + 1;      /* can hold index : [m] */
   len [5] = n;  len [6] = 256;
+printf ("\n nstates %d m %d eob %d", nstates, m, m);
+printf ("\n class EOF %d EOB %d", EOF_CLASS, EOB_CLASS);
 
   int * base = allocate (m * sizeof (int)),
     * accept = allocate (m * sizeof (int)),

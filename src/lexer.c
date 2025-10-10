@@ -344,7 +344,7 @@ int lxr_generate (FILE * in, FILE * out) {
     "\n#define lxr_eob_class    %3d   /* end of buffer     */"
     "\n#define lxr_eol_class    %3d   /* end of line       */"
     "\n#define lxr_eof_class    %3d   /* end of file       */",
-    nclass, class ['\n'], EOB_CLASS, EOL_CLASS, BOL_CLASS );
+    nclass, class ['\n'], EOB_CLASS, EOL_CLASS, EOF_CLASS );
 
   fprintf ( out, 
     "\n\n/*"
@@ -358,9 +358,9 @@ int lxr_generate (FILE * in, FILE * out) {
     "\n.. Accept state used internally. States [1, %d] are reserved"
     "\n.. for tokens listed in the lex source file"
     "\n*/"
-    "\n#define lxr_eob_accept   %3d   /* end of buffer     */"
-    "\n#define lxr_eof_accept   %3d   /* end of file       */",
-    (int) nrgx, 0, 1 );
+    "\n#define lxr_eof_accept   %3d   /* end of file       */"
+    "\n#define lxr_eob_accept   %3d   /* end of buffer     */",
+    nrgx, nrgx + 1, nrgx + 2 );
   /*
   .. Copies the whole file "src/source.c" at the top of the
   .. lexer generator file

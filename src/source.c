@@ -36,6 +36,7 @@ static char lxr_dummy[3] = { '\n', '\0', '\0' };
 static char * lxr_buff = lxr_dummy;                 /* current buffer */
 static char * lxr_start = lxr_dummy + 1;        /* start of this token */
 static char * lxr_bptr = lxr_dummy + 1;       /* buffer read location */
+static char lxr_hold_char = '\0';
 static size_t lxr_size = 1;                     /* current buff size */
 
 /*
@@ -60,6 +61,7 @@ static size_t lxr_size = 1;                     /* current buff size */
     */
     if (lxr_in == NULL) lxr_in = stdin;
 
+    //fixme : update bol_status here 
     size_t non_parsed = lxr_bptr - lxr_start;
     /*
     .. "non_parsed" : Bytes already consumed by automaton but yet
@@ -84,8 +86,10 @@ static size_t lxr_size = 1;                     /* current buff size */
       */
       lxr_size = (size_t) LXR_BUFF_SIZE;
       mem  = lxr_alloc ( lxr_size + 2 + sizeof (void *) );
-      *( (char **) mem ) = lxr_buff;
-      memcpy (mem + sizeof (void *), lxr_start, non_parsed);
+      if (mem != NULL ) {
+        *( (char **) mem ) = lxr_buff;
+        memcpy (mem + sizeof (void *), lxr_start, non_parsed);
+      }
     }
 
     if (mem == NULL) {
@@ -99,7 +103,7 @@ static size_t lxr_size = 1;                     /* current buff size */
     */
     lxr_buff = mem + sizeof (void *);
     lxr_start = lxr_buff;
-    lxr_bptr = lxr_buff + non_parsed;
+    lxr_bptr = lxr_buff + non_parsed; /* fixme : reparsing a very long token might be a bad idea */
 
     /*
     .. Read from input file which the buffer can hold, or till the
@@ -115,6 +119,7 @@ static size_t lxr_size = 1;                     /* current buff size */
       }
     }
     lxr_buff [bytes] = lxr_buff [bytes+1] = '\0';
+    lxr_hold_char = *lxr_start;
   }
 
   /*

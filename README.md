@@ -4,9 +4,9 @@
   Here is a minimal effort. (Not yet complete).
 
   Breaking down.
-  (a) regular expression (regex) are used to represent tokens.
-  (b) Non-deterministic tokens are build from regex
-  (d) Deterministic tokens are build from 
+  1. regular expression (regex) are used to represent tokens.
+  2. Non-deterministic tokens are build from regex
+  3. Deterministic tokens are build from 
 
 ## Regex pattern matching using NFA.
 
@@ -25,6 +25,7 @@ int len = rgx_nfa_match (nfa, "aac"); // returns > 0, if succesul
 
   1. Support most of POSIX ERE symbols.
   2. Following regular expression
+
 | Symbol   | Name         | Meaning / Description                                                   |
 | -------- | ------------ | ----------------------------------------------------------------------- |
 | `.`      | Dot  | Matches **any single character** except newline (`\n`)                          |
@@ -32,7 +33,7 @@ int len = rgx_nfa_match (nfa, "aac"); // returns > 0, if succesul
 | `$`      | End anchor   | Matches the **end of a line**                                           |
 | `[...]`  | Character class  | Matches **any one character** in the set                            |
 | `[^...]` | Negated character class  | Matches **any one character not** in the set                |
-| `|`      | Alternation  | Matches **either of the pattern** before and after `|` in the group     |
+| `\|`     | Alternation  | Matches **either of the pattern** before and after `\|` in the group    |
 | `()`     | Grouping     | Groups expressions as a single unit, affects alternation and repetition |
 | `*`      | Zero or more | Matches **zero or more** repetitions of the preceding expression        |
 | `+`      | One or more  | Matches **one or more** repetitions of the preceding expression         |
@@ -41,11 +42,17 @@ int len = rgx_nfa_match (nfa, "aac"); // returns > 0, if succesul
 | `{n,}`   | Lower-bounded repetition | Matches **n or more** occurrences                           | 
 | `{n,m}`  | Bounded repetition   | Matches **between n and m** occurrences (inclusive)             |
 | `\`      | Escape | Removes special meaning from the next character (e.g., `\.` matches a literal `.`) |
-  3. NOTE : DOESN'T support lookahead assertion pattern. 
-    1.  foo\bar    { /* foo before bar */ }
-    2.  foo(?=bar) { /* foo before bar */} 
-    3.  foo(?!bar) { /* foo not before bar */} 
-  4. NOTE : DOESN'T support <<EOF>> as in flex
+
+  3. NOTE : DOESN'T support any kind of pattern lookahead assertions.
+```lex
+foo\bar    { /* foo should be followed by bar */ }
+foo(?=bar) { /* foo should be followed by bar */ } 
+foo(?!bar) { /* foo shouldn't be followed by bar */ } 
+```
+  4. NOTE : DOESN'T support EOF as in flex
+```lex
+<<EOF>>    { /* flex allows EOF */ }
+```
 
   So it's upto user to handle these look ahead patterns by appropriate alternative
   like using appropriate context sensitive parser,

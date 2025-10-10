@@ -694,7 +694,7 @@ int lex_read_rules ( FILE * in ) {
 */
 int lex_print_tables () {
 
-  size_t nrgx = ( actions->len / sizeof (void *) );
+  int nrgx = (int) ( actions->len / sizeof (void *) );
   char ** rgx = allocate ( nrgx * sizeof (char *) );
   Action ** A = (Action **) actions->stack;
   for (int i=0; i<nrgx; ++i)
@@ -733,7 +733,7 @@ int lex_print_tables () {
     "\n#define lxr_eob_class    %3d   /* end of buffer     */"
     "\n#define lxr_eol_class    %3d   /* end of line       */"
     "\n#define lxr_eof_class    %3d   /* end of file       */",
-    nclass, class ['\n'], EOB_CLASS, EOL_CLASS, BOL_CLASS );
+    nclass, class ['\n'], EOB_CLASS, EOL_CLASS, EOF_CLASS );
 
   fprintf ( out, 
     "\n\n/*"
@@ -747,9 +747,9 @@ int lex_print_tables () {
     "\n.. Accept state used internally. States [1, %d] are reserved"
     "\n.. for tokens listed in the lex source file"
     "\n*/"
-    "\n#define lxr_eob_accept   %3d   /* end of buffer     */"
-    "\n#define lxr_eof_accept   %3d   /* end of file       */",
-    (int) nrgx, 0, 1 );
+    "\n#define lxr_eof_accept   %3d   /* end of file       */"
+    "\n#define lxr_eob_accept   %3d   /* end of buffer     */",
+    nrgx, nrgx+1, nrgx+2 );
 
   /*
   .. write all tables, before main lexer function

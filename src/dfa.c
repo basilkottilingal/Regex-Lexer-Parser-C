@@ -528,7 +528,7 @@ int rgx_list_dfa ( char ** rgx, int nr, DState ** dfa ) {
 int rgx_lexer_dfa ( char ** rgx, int nr, DState ** dfa ) {
   int n, nt = 0;
   State * nfa = allocate ( sizeof (State) ),
-    ** out = allocate ( (nr+1) * sizeof (State *) );
+    ** out = allocate ( (nr+2) * sizeof (State *) );
   nfa_reset ( rgx, nr );
   class_get ( &class, &nclass );
   for (int i=0; i<nr; ++i) {
@@ -542,12 +542,28 @@ int rgx_lexer_dfa ( char ** rgx, int nr, DState ** dfa ) {
     }
     nt += n;
   }
+  {
+    /*
+    .. handling EOF :
+    .. δ (0, class [EOF]) = EOF_STATE;
+    .. accept (EOF_STATE) = nr + 1; 
+    */
+    n = rgx_nfa ("x", &out[nr], nr+1);         /* a dummy regex "x" */
+    if (n < 0) {
+      error ("rgx list nfa : cannot create EOF transition");
+      return RGXERR;
+    }
+    State * nfa = out [nr]; assert (nfa->id == NFAEPS);
+    nfa = nfa->out[0];      assert (nfa->id == BOL_CLASS);
+    nfa->out[0]->id = EOF_CLASS; /* replace class['x'] by EOF class */
+    nt += n;
+  }
   *nfa = (State) {
     .id  = NFAEPS,
     .ist = nt++,
     .out = out
   };
-  return hopcroft (nfa, dfa, nt, nr);
+  return hopcroft (nfa, dfa, nt, nr + 1);
 }
 
 int rgx_dfa ( char * rgx, DState ** dfa ) {

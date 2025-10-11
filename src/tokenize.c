@@ -36,16 +36,20 @@
 int lxr_lex () {
 
   int state, class, acc_token, acc_len, len, idx, tkn;
+  int acc_len_old, acc_token_old, state_old;
   static int states [lxr_state_stack_size];
+
   lxr_tokenizer_init();
 
   do {                  /* Loop looking the longest token until EOF */
 
+    /* in case to back up */
+    acc_len_old = acc_len;
+    acc_token_old = acc_token;
+    state_old = state;
+    
     do {                            /* Transition loop until reject */
       class = (int) *lxr_bptr++;
-printf ("\n class %d", class);
-      int _class = (int) *lxr_bptr;
-printf ("\n _class %d", _class);
 
       /*
       .. find the transition corresponding to the class using check/
@@ -69,20 +73,18 @@ printf ("\n _class %d", _class);
       states [--idx] = state; 
     } while ( lxr_not_rejected (state) && idx );
 
-    len = lxr_bptr - lxr_start;
-    for (int i = idx; i < lxr_state_stack_size; ++i) {
+    len = (int) (lxr_bptr - lxr_start);
+    while (idx < lxr_state_stack_size) {
       /*
       .. (a) Longest token (b) In case of clash use the first token
       .. defined in the lexer file
       */
-      if ( (tkn = lxr_accept [states [i]]) ) {
+      if ( (tkn = lxr_accept [states [idx++]]) ) {
         acc_len = len; acc_token = tkn;
         break;
       }
       len--;
     }
-
-printf (" c%d acclen %d len %d", (int) *lxr_bptr, acc_len, len);
 
     if (lxr_not_rejected (state)) {
       idx = lxr_state_stack_size;
@@ -93,11 +95,10 @@ printf (" c%d acclen %d len %d", (int) *lxr_bptr, acc_len, len);
     .. Put the reading pointer at the last accepted location.
     .. Update with the new holding character.
     */
-    yyleng = acc_len = (acc_len ? acc_len : 1);
+    yyleng = acc_len ? acc_len : (acc_len = 1);
     lxr_bptr = lxr_start + acc_len;
     lxr_hold_char = yytext [acc_len];
     yytext [acc_len] = '\0';
-printf ("\n idxasa %zd %d %d", lxr_bptr - lxr_start, *lxr_bptr, *lxr_start);
 
     /*
     .. handling accept/reject. In case of accepting, corresponding
@@ -126,10 +127,7 @@ printf ("\n idxasa %zd %d %d", lxr_bptr - lxr_start, *lxr_bptr, *lxr_start);
 
         case lxr_eob_accept :
           printf ("\nEOB");
-          //++idx; //len --;
-          acc_len = acc_token = 0; //fixme : recover prev acc
           lxr_bptr --;
-printf ("\n idxasa %zd %d %d", lxr_bptr - lxr_start, *lxr_bptr, *lxr_start);
           lxr_buffer_update ();
           break;
 
@@ -138,8 +136,13 @@ printf ("\n idxasa %zd %d %d", lxr_bptr - lxr_start, *lxr_bptr, *lxr_start);
       }
     } while (0);
 
-    if (acc_token == lxr_eob_accept)
+    if (acc_token == lxr_eob_accept) {
+      state = (idx == lxr_state_stack_size) ? 
+        state_old : states [idx];
+      acc_len = acc_len_old;
+      acc_token = acc_token_old;                      /* backing up */
       continue; /* continue from where we stopped lexing bcz of eob */
+    }
 
     lxr_tokenizer_init ();             /* start reading a new token */
 
@@ -199,7 +202,6 @@ static void lxr_buffer_update () {
       fprintf (stderr, "lxr_alloc failed");
       exit (-1);
     }
-
     memcpy (s->bytes, & yytext [-1], non_parsed + 1);
     memcpy (s->class, lxr_start,     non_parsed);
 
@@ -219,7 +221,7 @@ static void lxr_buffer_update () {
   yytext = s->bytes + 1;
   lxr_start = s->class;
   lxr_bptr = lxr_start + non_parsed;
-  lxr_hold_char = *lxr_start;
+  lxr_hold_char = *yytext;
     
   size_t bytes =
     fread ( & yytext [non_parsed], 1, lxr_size - non_parsed, lxr_in );

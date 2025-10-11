@@ -38,14 +38,15 @@ typedef struct lxr_stack {
   struct lxr_stack * next; 
 } lxr_stack ;
 
-static char lxr_sample[] = "\n";
-static unsigned char lxr_dummy[2] = {lxr_eob_class, lxr_eob_class};
+static char lxr_sample[] = "\ndummy";
+static unsigned char
+  lxr_dummy[3] = {lxr_eob_class, lxr_eob_class, lxr_eob_class};
 static unsigned char * lxr_start = lxr_dummy;
 static unsigned char * lxr_bptr  = lxr_dummy;
 
 static char lxr_hold_char = '\0';
 char * yytext = lxr_sample + 1;
-size_t yyleng = 0;
+int    yyleng = 0;
 
 static lxr_stack * lxr_current = NULL;
   

@@ -39,7 +39,7 @@ typedef struct lxr_stack {
 } lxr_stack ;
 
 static char lxr_sample[] = "\n";
-static unsigned char lxr_dummy[2] = {lxr_eob_class};
+static unsigned char lxr_dummy[2] = {lxr_eob_class, lxr_eob_class};
 static unsigned char * lxr_start = lxr_dummy;
 static unsigned char * lxr_bptr  = lxr_dummy;
 

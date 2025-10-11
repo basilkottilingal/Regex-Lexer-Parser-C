@@ -10,9 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-static char * lxr_eof = NULL;
 static FILE * lxr_in = NULL;
-
 extern void lxr_in_set (FILE *fp) {
   if (fp == NULL) {
     fprintf (stderr, "Invalid lxr_in");
@@ -32,123 +30,118 @@ extern void lxr_in_set (FILE *fp) {
   #define lxr_realloc(_a_,_s_)  realloc (_a_, _s_)
   #define lxr_free(_a_)         free (_a_)
 #endif
-static char lxr_dummy[3] = { '\n', '\0', '\0' };
-static char * lxr_buff = lxr_dummy;                 /* current buffer */
-static char * lxr_start = lxr_dummy + 1;        /* start of this token */
-static char * lxr_bptr = lxr_dummy + 1;       /* buffer read location */
+
+typedef struct lxr_stack {
+  char * bytes;
+  unsigned char * class;
+  size_t size;
+  struct lxr_stack * next; 
+} lxr_stack ;
+
+static char lxr_sample[] = "\n";
+static unsigned char lxr_dummy[] = {lxr_eob_class, lxr_eob_class};
+static unsigned char * lxr_start = lxr_dummy;
+static unsigned char * lxr_bptr  = lxr_dummy;
+
 static char lxr_hold_char = '\0';
-static size_t lxr_size = 1;                     /* current buff size */
+extern char * yytext = lxr_sample + 1;
+extern int    yyleng = 0;
 
-/*
-.. If user hasn't given a character input function, lxr_input() is
-.. taken as default input function. User may override this by defining
-.. a macro LXR_INPUT which calls a function with signature
-..   int lxr_input ( void );
-*/
-#ifndef LXR_INPUT
-  #define LXR_INPUT
+static lxr_stack * lxr_current = NULL;
+  
+#ifndef LXR_BUFF_SIZE
+#define LXR_BUFF_SIZE  1<<16     /* default buffer size : 16 kB */
+#endif
+static size_t lxr_size = LXR_BUFF_SIZE;
 
-  #ifndef LXR_BUFF_SIZE
-    #define LXR_BUFF_SIZE  1<<16     /* default buffer size : 16 kB */
-  #endif
+static void lxr_buffer_update () {
 
+  if (lxr_in == NULL) lxr_in = stdin;
+    
   /*
-  .. Creata a new buffer / expand buffer and fill it (or until EOF)
+  .. "non_parsed" : Bytes already consumed by automaton but yet
+  .. to be accepted. These bytes will be copied to the new buffer.
+  .. fixme : may reallocate if non_parsed is > 50 % of buffer.
+  .. (as of now, reallocate if non_parsed == 100% of buffer)
   */
-  static void lxr_buffer_update () {
-    /*
-    .. Create a new buffer as we hit the end of the current buffer.
-    */
-    if (lxr_in == NULL) lxr_in = stdin;
+  size_t size = lxr_size, non_parsed = lxr_bptr - lxr_start;
 
-    //fixme : update bol_status here 
-    size_t non_parsed = lxr_bptr - lxr_start;
-    /*
-    .. "non_parsed" : Bytes already consumed by automaton but yet
-    .. to be accepted. These bytes will be copied to the new buffer.
-    .. fixme : may reallocate if non_parsed is > 50 % of buffer.
-    .. (as of now, reallocate if non_parsed == 100% of buffer)
-    */
-    char * mem;
-    if ( lxr_start == lxr_buff ) {
-      /*
-      .. Current buffer not sufficient for the token being read.
-      .. Buffer size is doubled
-      */
-      lxr_size *=2;
-      mem  = lxr_realloc ( lxr_buff - sizeof (void *),
-        lxr_size + 2 + sizeof (void *) );
-    }
-    else {
-      /*
-      .. We add the buffer to the linked list of buffers, so at the
-      .. end of the lexing pgm, you can remove each blocks.
-      */
-      lxr_size = (size_t) LXR_BUFF_SIZE;
-      mem  = lxr_alloc ( lxr_size + 2 + sizeof (void *) );
-      if (mem != NULL ) {
-        *( (char **) mem ) = lxr_buff;
-        memcpy (mem + sizeof (void *), lxr_start, non_parsed);
-      }
-    }
+  lxr_stack * s = lxr_current;
+  if (s == NULL || (yytext - s->bytes) > (size_t) 1 ) {
 
-    if (mem == NULL) {
-      fprintf (stderr, "LXR : ALLOC/REALLOC failed. Out of memory");
+    while ( size <= non_parsed )
+      size *= 2;
+
+    s = lxr_alloc (sizeof (size));
+    if ( s == NULL ) {
+      fprintf (stderr, "lxr_alloc failed");
+      exit (-1);
+    }
+    * s = (lxr_stack) {
+      .size  = size,
+      .bytes = lxr_alloc (size + 2),
+      .class = lxr_alloc (size + 2),
+      .next  = lxr_current
+    };
+    if ( s->bytes == NULL || s->class == NULL ) {
+      fprintf (stderr, "lxr_alloc failed");
       exit (-1);
     }
 
-    /*
-    .. Update the pointers to the current buffer, last accepted byte
-    .. and current reading ptr
-    */
-    lxr_buff = mem + sizeof (void *);
-    lxr_start = lxr_buff;
-    lxr_bptr = lxr_buff + non_parsed; /* fixme : reparsing a very long token might be a bad idea */
+    memcpy (s->bytes, & yytext [-1], non_parsed + 1);
+    memcpy (s->class, lxr_start,     non_parsed);
 
-    /*
-    .. Read from input file which the buffer can hold, or till the
-    .. EOF is encountered
-    */
-    size_t bytes = non_parsed +
-      fread ( lxr_bptr, 1, lxr_size - non_parsed, lxr_in );
-    if (bytes < lxr_size) {
-      if (feof (lxr_in)) lxr_eof = & lxr_buff [bytes];
-      else {
-        fprintf (stderr, "LXR : fread failed !!");
-        exit (-1);
-      }
+    lxr_current = s; 
+  }
+  else {
+    size = s->size * 2;
+    s->bytes = lxr_realloc (s->bytes, size + 2);
+    s->class = lxr_realloc (s->class, size + 2);
+    s->size  = size;
+    if ( s->bytes == NULL || s->class == NULL ) {
+      fprintf (stderr, "lxr_realloc failed");
+      exit (-1);
     }
-    lxr_buff [bytes] = lxr_buff [bytes+1] = '\0';
-    lxr_hold_char = *lxr_start;
   }
 
-  /*
-  .. The default input function that outputs byte by byte, each in the
-  .. range [0x00, 0xFF]. Exception : EOF (-1).
-  */
-  int lxr_input () {
+  yytext = s->bytes + 1;
+  lxr_start = s->class;
+  lxr_bptr = lxr_start + non_parsed;
+  lxr_hold_char = *lxr_start;
+    
+  size_t bytes =
+    fread ( & yytext [non_parsed], 1, lxr_size - non_parsed, lxr_in );
 
-    /*
-    .. In case next character is unknown, you have to expand/renew the
-    .. the buffer. It's because you need to look ahead to look for
-    .. boundary assertion patterns like abc$
-    */
-    if ( lxr_bptr[1] == '\0' && lxr_eof == NULL )
-      lxr_buffer_update ();
-
-    /*
-    .. return EOF without consuming, so you can call lxr_input () any
-    .. number of times, each time returning EOF. 
-    */
-    if (lxr_bptr == lxr_eof)
-      return EOF;
-
-    /*
-    .. A character in [0x00, 0xFF]
-    */
-    return (int) ( (unsigned char) *lxr_bptr++ );
-      
+  lxr_bptr [bytes] = lxr_eob_class;
+  lxr_bptr [bytes + 1] = lxr_eob_class;
+  yytext   [bytes + non_parsed] = '\0';
+  if (bytes < lxr_size - non_parsed) {
+    if (feof (lxr_in)) {
+      lxr_bptr [bytes] = lxr_eof_class;
+      lxr_bptr [bytes + 1] = lxr_eof_class;
+    }
+    else {
+      fprintf (stderr, "lxr buffer : fread failed !!");
+      exit (-1);
+    }
   }
+
+  unsigned char * byte = & ((unsigned char *) yytext) [non_parsed] ;
+  for (size_t i=0; i<bytes; ++i)
+    lxr_bptr [i] = lxr_class [ *byte++];
+}
+  
+/*
+.. The default input function that outputs byte by byte, each in the
+.. range [0x00, 0xFF]. Exception : EOF (-1).
+*/
+int lxr_input () {
+  if (*lxr_bptr == lxr_eob_class)
+    lxr_buffer_update ();
+  if (*lxr_bptr == lxr_eof_class)
+    return EOF;
+  return (int) (unsigned char) ( yytext [lxr_bptr++ - lxr_start] );
+}
 
 #endif
 
@@ -156,10 +149,10 @@ void lxr_clean () {
   /*
   .. Free all the memory blocks created for buffer.
   .. User required to run this at the end of the program
-  */
   while ( lxr_buff != lxr_dummy ) {
     char * mem = lxr_buff - sizeof (char *);
     lxr_buff = * (char **) mem ;
     lxr_free (mem);
   }
+  */
 }

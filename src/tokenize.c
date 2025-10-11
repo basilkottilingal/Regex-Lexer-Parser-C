@@ -14,7 +14,10 @@
 
 #define lxr_max_depth                        1
 #define lxr_dead                             0
-#define lxr_not_rejected(s)                 (s)           /* s != 0 */
+#define lxr_not_rejected(s)                  (s)          /* s != 0 */
+#ifndef lxr_state_stack_size 
+#define lxr_state_stack_size                 128
+#endif
 
 #define lxr_tokenizer_init()                                         \
     do {                                                             \
@@ -23,6 +26,7 @@
       state = 1 + (yytext [-1] == '\n');                             \
       acc_token = acc_len = len = 0;                                 \
       lxr_start = lxr_bptr;                                          \
+      idx = lxr_state_stack_size;                                    \
     } while (0) 
 
 /*
@@ -31,14 +35,17 @@
 */
 int lxr_lex () {
 
-  int state, class, acc_token, acc_len, len;
+  int state, class, acc_token, acc_len, len, idx, tkn;
+  static int states [lxr_state_stack_size];
   lxr_tokenizer_init();
 
   do {                  /* Loop looking the longest token until EOF */
 
     do {                            /* Transition loop until reject */
       class = (int) *lxr_bptr++;
-      len++;
+printf ("\n class %d", class);
+      int _class = (int) *lxr_bptr;
+printf ("\n _class %d", _class);
 
       /*
       .. find the transition corresponding to the class using check/
@@ -55,22 +62,32 @@ int lxr_lex () {
       }
 
       /*
-      .. Update the most eligible token using the criteria
+      .. Keep stack of states
+      */
+      if ( lxr_not_rejected (state) )
+        state = (int) lxr_next [lxr_base[state] + class];
+      states [--idx] = state; 
+    } while ( lxr_not_rejected (state) && idx );
+
+    len = lxr_bptr - lxr_start;
+    for (int i = idx; i < lxr_state_stack_size; ++i) {
+      /*
       .. (a) Longest token (b) In case of clash use the first token
       .. defined in the lexer file
       */
-      if ( lxr_not_rejected (state) ) {
-        state = (int) lxr_next [lxr_base[state] + class];
-        if ( lxr_not_rejected (state) && lxr_accept [state] &&
-          ( len > acc_len || (int) lxr_accept [state] < acc_token) )
-        {
-          acc_len = len;
-          acc_token = (int) lxr_accept [state];
-        }
+      if ( (tkn = lxr_accept [states [i]]) ) {
+        acc_len = len; acc_token = tkn;
+        break;
       }
+      len--;
+    }
 
-    } while ( lxr_not_rejected (state) ); 
+printf (" c%d acclen %d len %d", (int) *lxr_bptr, acc_len, len);
 
+    if (lxr_not_rejected (state)) {
+      idx = lxr_state_stack_size;
+      continue;
+    }
 
     /*
     .. Put the reading pointer at the last accepted location.
@@ -80,6 +97,7 @@ int lxr_lex () {
     lxr_bptr = lxr_start + acc_len;
     lxr_hold_char = yytext [acc_len];
     yytext [acc_len] = '\0';
+printf ("\n idxasa %zd %d %d", lxr_bptr - lxr_start, *lxr_bptr, *lxr_start);
 
     /*
     .. handling accept/reject. In case of accepting, corresponding
@@ -108,9 +126,10 @@ int lxr_lex () {
 
         case lxr_eob_accept :
           printf ("\nEOB");
-          len --;
+          //++idx; //len --;
           acc_len = acc_token = 0; //fixme : recover prev acc
           lxr_bptr --;
+printf ("\n idxasa %zd %d %d", lxr_bptr - lxr_start, *lxr_bptr, *lxr_start);
           lxr_buffer_update ();
           break;
 
@@ -147,6 +166,8 @@ static void lxr_buffer_update () {
       lxr_bptr [1] != lxr_eob_class)
   {
     fprintf (stderr, "lxr_buffer_update () : internal check failed");
+    fprintf (stderr, "[%d, %d]", lxr_bptr [0], lxr_bptr [1]);
+    exit (-1);
   }
     
   /*

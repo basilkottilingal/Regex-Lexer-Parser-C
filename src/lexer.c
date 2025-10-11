@@ -335,23 +335,19 @@ int lxr_generate (FILE * in, FILE * out) {
   int nclass = len [5], * class = tables [6];
    
   fprintf ( out, 
-    "\n#define lxr_eq_class(c)  ( lxr_class [c] )"
-    "\n#define lxr_nclass       %3d   /* num of eq classes */"
-    "\n#define lxr_nel_class    %3d   /* new line  '\\n'    */"
     "\n/*"
-    "\n.. Equivalence class for special symbols outside [0x00, 0xFF]"
-    "\n*/"
-    "\n#define lxr_eob_class    %3d   /* end of buffer     */"
-    "\n#define lxr_eol_class    %3d   /* end of line       */"
-    "\n#define lxr_eof_class    %3d   /* end of file       */",
+    "\n.. Equivalence classes for alphabets in [0x00, 0xFF] are"
+    "\n.. stored in the table lxr_class []. The number of equivalence"
+    "\n.. classes also counts the special equivalence classes like"
+    "\n.. that of EOB/EOL/EOF/BOL. However BOL transition is never"
+    "\n.. used, as the state 2 is reserved for the starting DFA in"
+    "\n.. case of BOL status."
+    "\n#define lxr_nclass       %3d          /* num of eq classes */"
+    "\n#define lxr_nel_class    %3d          /* new line  '\\n'    */"
+    "\n#define lxr_eob_class    %3d          /* end of buffer     */"
+    "\n#define lxr_eol_class    %3d          /* end of line       */"
+    "\n#define lxr_eof_class    %3d          /* end of file       */",
     nclass, class ['\n'], EOB_CLASS, EOL_CLASS, EOF_CLASS );
-
-  fprintf ( out, 
-    "\n\n/*"
-    "\n.. DFA states"
-    "\n*/"
-    "\n#define lxr_start_state(_is_bol_)  (1 + _is_bol_)"
-    "\n#define lxr_reject_state           0");
 
   fprintf ( out, 
     "\n\n/*"

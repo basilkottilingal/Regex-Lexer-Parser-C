@@ -12,77 +12,45 @@
 .. (f) accept value in [1, ntokens] for accepted tokens
 */
 
-#define LXR_MAXDEPTH         1
-#define LXRDEAD              0
-#define lxr_not_rejected(s)  (s)    /* s != 0 */
+#define lxr_max_depth                        1
+#define lxr_dead                             0
+#define lxr_not_rejected(s)                 (s)           /* s != 0 */
 
+#define lxr_tokenizer_init() do {\
+      lxr_bol_status = (yytext [-1] == '\n');                        \
+      state = 1 + lxr_bol_status;                                    \
+      acc_token = acc_len = len = 0;                                 \
+      lxr_start = lxr_bptr;                                          \
+      *lxr_start = lxr_hold_char;                                    \
+      yytext += yyleng;                                              \
+    }   while (0) 
+
+/*
+.. The main lexer function. Returns 0, when EOF is encountered. So,
+.. don't use return value 0 inside any action.
+*/
 int lxr_lex () {
-  int is_eof = 0;
-    
-  int lxr_bol_status = (lxr_bptr [-1] == '\n');
+
+  int lxr_bol_status, state, class, acc_token, acc_len, len;
+  lxr_tokenizer_init();
 
   do {                  /* Loop looking the longest token until EOF */
 
-    lxr_start = lxr_bptr;
-    *lxr_start = lxr_hold_char;   /* put back the holding character     */
-
-    int uchar, class,       /* input character & it's class         */
-      state = 1 + lxr_bol_status, /* start with 1 or 2 depending on BOL flag */
-      last_state = LXRDEAD, /* if EOL transition failed, go back    */
-      acc_token = 0,        /* last accepted token                  */
-      acc_len = 0,          /* length of the last accepted state    */
-      len = 0,              /* consumed length for the current      */
-      depth,                /* depth of fallback                    */
-      lxr_eol_status = 
-        ( lxr_bptr == lxr_eof ) || ( *lxr_bptr == '\n' );
-
     do {                            /* Transition loop until reject */
-
-      #if 0
-      /*
-      .. Before running the transition corresponding to byte input
-      .. from the file, we do the EOL transition if the next byte is
-      .. '\n' or has reached EOF
-      */
-      if (lxr_eol_status) {
-        class = lxr_eol_class; lxr_eol_status = 0;
-        last_state = state;
-      }
-      else {
-        /*
-        .. Consume the byte from file/buffer and update EOL status
-        */
-        if ( *lxr_bptr == '\0' && lxr_eof == NULL )
-          lxr_buffer_update ();
-        if (lxr_bptr == lxr_eof) {
-          if (len == 0) is_eof = 1;
-          break;
-        }
-        uchar = (unsigned char) *lxr_bptr++;
-        len++;
-        class = lxr_class [uchar];
-        lxr_eol_status = ( lxr_bptr == lxr_eof ) || (*lxr_bptr == '\n');
-      }
-      #else
-
-      class = *lxr_bptr ? lxr_class [*lxr_bptr++] :
-        (lxr_bptr == lxr_eof) ? lxr_eof_class : lxr_eob_class; 
+      class = (int) *lxr_bptr++;
       len++;
-      #endif
 
       /*
       .. find the transition corresponding to the class using check/
       .. next tables and if not found in [base, base + nclass), use
       .. the fallback
+      .. Note: (a) No meta class as of now. (b) assumes transition
+      .. is DEAD if number of fallbacks reaches lxr_max_depth
       */
-      depth = 0;
+      int depth = 0;
       while ( lxr_not_rejected (state) && 
         ((int) lxr_check [lxr_base [state] + class] != state) ) {
-        /*
-        .. Note: (a) No meta class as of now. (b) assumes transition
-        .. is DEAD if number of fallbacks reaches LXR_MAXDEPTH
-        */
-        state = (depth++ == LXR_MAXDEPTH) ? LXRDEAD : 
+        state = (depth++ == lxr_max_depth) ? lxr_dead : 
           (int) lxr_def [state];
       }
 
@@ -101,25 +69,17 @@ int lxr_lex () {
         }
       }
 
-      /*
-      .. We undo the EOL transition and proceed further looking for
-      .. longer tokens.
-      */
-      #if 0
-      if (class == lxr_eol_class)
-        state = last_state;
-      #endif
-
     } while ( lxr_not_rejected (state) ); 
 
 
     /*
-    .. Update with new holding character & it's location.
+    .. Put the reading pointer at the last accepted location.
+    .. Update with the new holding character.
     */
-    lxr_bptr = lxr_start + (acc_len ? acc_len : 1);
-    lxr_hold_char = *lxr_bptr;
-    *lxr_bptr = '\0';
-    lxr_bol_status = (lxr_bptr [-1] == '\n');
+    yyleng = acc_len = (acc_len ? acc_len : 1);
+    lxr_bptr = lxr_start + acc_len;
+    lxr_hold_char = yytext [acc_len];
+    yytext [acc_len] = '\0';
 
     /*
     .. handling accept/reject. In case of accepting, corresponding
@@ -135,26 +95,35 @@ int lxr_lex () {
     */
 
     do {   /* Just used a newer block to avoid clash of identifiers */
+
       switch ( acc_token ) {
+
         /*% replace this line with case <token> : <action>  break; %*/
+
         case lxr_eof_accept :
           printf ("\nEOF");
-          lxr_bptr --;
-          lxr_bol_status = (lxr_start [-1] == '\n');
+          lxr_bptr = lxr_start;
           return 0;
+
         case lxr_eob_accept :
           printf ("\nEOB");
           lxr_bptr --;
-          lxr_bol_status = (lxr_start [-1] == '\n'); //fixme : segfault if the whole 
           lxr_buffer_update ();
           break;
+
         default :                                /* Unknown pattern */
+
       }
     } while (0);
 
-  } while (!is_eof);    /* Will stop when the first character is EOF */
+    if (acc_token == lxr_eob_accept)
+      continue; /* continue from where we stopped lexing bcz of eob */
 
-  return EOF;
+    lxr_tokenizer_init ();             /* start reading a new token */
+
+  } while (1);
+
+  return EOF;                     /* The code will never reach here */
 }
 
-#undef LXRDEAD
+#undef lxr_dead

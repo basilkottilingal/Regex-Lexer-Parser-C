@@ -232,6 +232,7 @@ int lexer_head ( FILE * out ) {
 .. function lxr_lex ().
 */
 int lexer_tail (FILE * out, Stack * actions) {
+
   char buf[BUFSIZ];
   FILE *in = fopen("../src/tokenize.c", "r");
   if (!in || !out)

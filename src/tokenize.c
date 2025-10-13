@@ -192,6 +192,9 @@ int lxr_lex () {
   return EOF;                     /* The code will never reach here */
 }
 
+/*
+.. input/unput not yet tested
+*/
 int lxr_input () {
   if (*lxr_bptr == lxr_eob_class)
     lxr_buffer_update ();

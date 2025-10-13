@@ -793,7 +793,9 @@ int lex_print_lxr_fnc () {
   size_t nrgx = ( actions->len / sizeof (void *) );
   Action ** A = (Action **) actions->stack;
   for (int i=0; i < nrgx; ++i) {
-    fprintf (out, "\n      case %d :", i+1);
+    fprintf (out,
+      "\n      case %d :"
+      "\n        # line %d %s", i+1, A[i]->line, "lexer.l");
     #ifdef LXR_DEBUG
     (void) A;
     fprintf (out,
@@ -817,8 +819,14 @@ int lex_print_lxr_fnc () {
 }
 
 void lex_print_snippets () {
+  int line = snippet_head->line;
+  fprintf (out, "\n# line %d %s", line, "lexer.l"); //fixme
   Snippet * s = snippet_head;
   while (s) {
+    if (line++ != s->line) {
+      line = s->line;
+      fprintf (out, "\n# line %d %s", line, "lexer.l"); //fixme
+    }
     fprintf (out, "%s", s->code);
     s = s->next;
   }
@@ -859,10 +867,13 @@ int read_lex_input (FILE * fp, FILE * _out) {
 
   line = 0;
 
+  fprintf (out, "\n# line 1 %s", "out.c"); //fixme
   if (lex_read_definitions (fp) < 0) {
     error ("failed reading defintion section. line %d", line);
     return RGXERR;
   }
+    
+  line++;
 
   if (lex_read_rules (fp) < 0) {
     error ("failed reading rules section. line %d", line);
@@ -873,6 +884,7 @@ int read_lex_input (FILE * fp, FILE * _out) {
 
   lex_print_snippets ();
 
+  fprintf (out, "\n# line 0 %s", "out.c"); //fixme
   if (lex_print_tables () < 0) {
     error ("failed creating tables");
     return RGXERR;
@@ -888,9 +900,11 @@ int read_lex_input (FILE * fp, FILE * _out) {
     return RGXERR;
   }
 
+  fprintf (out, "\n# line %d %s", line+1, "lexer.l");
   lex_print_last (fp);
 
   #ifdef LXR_DEBUG
+  fprintf (out, "\n# line %d %s", 0, "out.c"); //fixme :
   fprintf (out,
     "\nint main () {\n  lxr_lex ();\n  return 0;\n}" );
   #endif

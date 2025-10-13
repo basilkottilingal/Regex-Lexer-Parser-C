@@ -724,23 +724,20 @@ int lex_print_tables () {
   int nclass = len [5], * class = tables [6];
    
   fprintf ( out, 
-    "\n#define lxr_eq_class(c)  ( lxr_class [c] )"
-    "\n#define lxr_nclass       %3d   /* num of eq classes */"
-    "\n#define lxr_nel_class    %3d   /* new line  '\\n'    */"
     "\n/*"
-    "\n.. Equivalence class for special symbols outside [0x00, 0xFF]"
+    "\n.. Equivalence classes for alphabets in [0x00, 0xFF] are"
+    "\n.. stored in the table lxr_class []. The number of equivalence"
+    "\n.. classes also counts the special equivalence classes like"
+    "\n.. that of EOB/EOL/EOF/BOL. However BOL transition is never"
+    "\n.. used, as the state 2 is reserved for the starting DFA in"
+    "\n.. case of BOL status."
     "\n*/"
-    "\n#define lxr_eob_class    %3d   /* end of buffer     */"
-    "\n#define lxr_eol_class    %3d   /* end of line       */"
-    "\n#define lxr_eof_class    %3d   /* end of file       */",
+    "\n#define lxr_nclass       %3d          /* num of eq classes */"
+    "\n#define lxr_nel_class    %3d          /* new line  '\\n'    */"
+    "\n#define lxr_eob_class    %3d          /* end of buffer     */"
+    "\n#define lxr_eol_class    %3d          /* end of line       */"
+    "\n#define lxr_eof_class    %3d          /* end of file       */",
     nclass, class ['\n'], EOB_CLASS, EOL_CLASS, EOF_CLASS );
-
-  fprintf ( out, 
-    "\n\n/*"
-    "\n.. DFA states"
-    "\n*/"
-    "\n#define lxr_start_state(_is_bol_)  (1 + _is_bol_)"
-    "\n#define lxr_reject_state           0");
 
   fprintf ( out, 
     "\n\n/*"
@@ -749,7 +746,7 @@ int lex_print_tables () {
     "\n*/"
     "\n#define lxr_eof_accept   %3d   /* end of file       */"
     "\n#define lxr_eob_accept   %3d   /* end of buffer     */",
-    nrgx, nrgx+1, nrgx+2 );
+    nrgx, nrgx + 1, nrgx + 2 );
 
   /*
   .. write all tables, before main lexer function
@@ -800,7 +797,8 @@ int lex_print_lxr_fnc () {
     #ifdef LXR_DEBUG
     (void) A;
     fprintf (out,
-      "\n        printf (\"\\ntoken [%3d] %%s\", lxrstrt);"
+      "\n        printf (\"\\nl%%3d c%%3d: token [%3d] %%s\","
+      "\n          lxr_line_no, lxr_col_no, yytext);"
       "\n        break;", i+1);
     #else
     fprintf (out,
@@ -875,13 +873,13 @@ int read_lex_input (FILE * fp, FILE * _out) {
 
   lex_print_snippets ();
 
-  if (lex_print_source () < 0) {
-    error ("lxr : failed writing lexer head");
+  if (lex_print_tables () < 0) {
+    error ("failed creating tables");
     return RGXERR;
   }
 
-  if (lex_print_tables () < 0) {
-    error ("failed creating tables");
+  if (lex_print_source () < 0) {
+    error ("lxr : failed writing lexer head");
     return RGXERR;
   }
 

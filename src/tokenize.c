@@ -18,15 +18,27 @@
 #ifndef lxr_state_stack_size 
 #define lxr_state_stack_size                 128
 #endif
+#define lxr_clear_stack()           stack_idx = lxr_state_stack_size
+
+int lxr_line_no = 1;
+int lxr_col_no = 1;
 
 #define lxr_tokenizer_init()                                         \
     do {                                                             \
       yytext [yyleng] = lxr_hold_char;                               \
-      yytext += lxr_bptr - lxr_start;                                \
+      acc_len = (int) (lxr_bptr - lxr_start);                        \
+      yytext += acc_len;                                             \
+      for (; acc_len; --acc_len) {                                   \
+        if (*lxr_start++ == lxr_nel_class) {                         \
+          lxr_col_no = 1;                                            \
+          lxr_line_no++;                                             \
+          continue;                                                  \
+        }                                                            \
+        lxr_col_no++;                                                \
+      }                                                              \
       state = 1 + (yytext [-1] == '\n');                             \
-      acc_token = acc_len = len = 0;                                 \
-      lxr_start = lxr_bptr;                                          \
-      idx = lxr_state_stack_size;                                    \
+      acc_token = 0;                                                 \
+      lxr_clear_stack();                                             \
     } while (0) 
 
 /*
@@ -35,12 +47,16 @@
 */
 int lxr_lex () {
 
-  int state, class, acc_token, acc_len, len, idx, tkn;
-  int acc_len_old, acc_token_old, state_old;
   static int states [lxr_state_stack_size];
+  unsigned char * cls;
+  int state, class, acc_token, acc_len, stack_idx,
+    depth, token,
+    #ifdef lxr_eol_class
+    eol,
+    #endif
+    acc_len_old, acc_token_old, state_old;
 
   lxr_tokenizer_init();
-
   do {                  /* Loop looking the longest token until EOF */
 
     /* in case to back up */
@@ -50,15 +66,16 @@ int lxr_lex () {
     
     do {                            /* Transition loop until reject */
       class = (int) *lxr_bptr++;
+      states [--stack_idx] = state; 
 
       /*
       .. find the transition corresponding to the class using check/
       .. next tables and if not found in [base, base + nclass), use
-      .. the fallback
+      .. the fallback. Each Keep stack of states
       .. Note: (a) No meta class as of now. (b) assumes transition
       .. is DEAD if number of fallbacks reaches lxr_max_depth
       */
-      int depth = 0;
+      depth = 0;
       while ( lxr_not_rejected (state) && 
         ((int) lxr_check [lxr_base [state] + class] != state) ) {
         state = (depth++ == lxr_max_depth) ? lxr_dead : 
@@ -70,24 +87,50 @@ int lxr_lex () {
       */
       if ( lxr_not_rejected (state) )
         state = (int) lxr_next [lxr_base[state] + class];
-      states [--idx] = state; 
-    } while ( lxr_not_rejected (state) && idx );
 
-    len = (int) (lxr_bptr - lxr_start);
-    while (idx < lxr_state_stack_size) {
+    } while ( lxr_not_rejected (state) && stack_idx );
+
+    cls = lxr_bptr - 1;
+    while (stack_idx < lxr_state_stack_size) {
       /*
-      .. (a) Longest token (b) In case of clash use the first token
-      .. defined in the lexer file
+      .. (a) "acc_token" will be the longest token
+      .. (b) In case two patterns are matched for the longest token,
+      .. use the first token defined in the lexer file.
+      .. (c) NOTE : in case no pattern use the EOL anchor '$', the
+      .. following optional snippet will be skipped.
       */
-      if ( (tkn = lxr_accept [states [idx++]]) ) {
-        acc_len = len; acc_token = tkn;
+      #ifdef lxr_eol_class
+      if ( *cls == lxr_eof_class || *cls == lxr_nel_class ) {
+        eol = states [stack_idx];
+        depth = 0;
+        while ( lxr_not_rejected (eol) && 
+          ((int) lxr_check [lxr_base [eol] + lxr_eol_class] != eol)) {
+          eol = (depth++ == lxr_max_depth) ? lxr_dead : 
+            (int) lxr_def [eol];
+        }
+
+        if ( lxr_not_rejected (eol) ) {
+          eol = (int) lxr_next [lxr_base[eol] + lxr_eol_class];
+          if ((token = lxr_accept [eol])
+            && token < lxr_accept [states [stack_idx]])
+          {
+            acc_len = cls - lxr_start;
+            acc_token = token;
+            break;
+          }
+        }
+      }
+      #endif
+      if ( (token = lxr_accept [states [stack_idx++]]) ) {
+        acc_len = cls - lxr_start;
+        acc_token = token;
         break;
       }
-      len--;
+      --cls;
     }
 
     if (lxr_not_rejected (state)) {
-      idx = lxr_state_stack_size;
+      lxr_clear_stack ();
       continue;
     }
 
@@ -120,13 +163,11 @@ int lxr_lex () {
         /*% replace this line with case <token> : <action>  break; %*/
 
         case lxr_eof_accept :
-          printf ("\nEOF");
           lxr_bptr = lxr_start;
           yyleng = 0;
           return 0;
 
         case lxr_eob_accept :
-          printf ("\nEOB");
           lxr_bptr --;
           lxr_buffer_update ();
           break;
@@ -137,8 +178,8 @@ int lxr_lex () {
     } while (0);
 
     if (acc_token == lxr_eob_accept) {
-      state = (idx == lxr_state_stack_size) ? 
-        state_old : states [idx];
+      state = (stack_idx == lxr_state_stack_size) ? 
+        state_old : states [stack_idx];
       acc_len = acc_len_old;
       acc_token = acc_token_old;                      /* backing up */
       continue; /* continue from where we stopped lexing bcz of eob */

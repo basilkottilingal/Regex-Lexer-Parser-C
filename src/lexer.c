@@ -259,7 +259,8 @@ int lexer_tail (FILE * out, Stack * actions) {
     #ifdef LXR_DEBUG
     fprintf (out,
       "\n      case %d :"
-      "\n        printf (\"\\ntoken [%3d] %%s\", yytext);"
+      "\n        printf (\"\\ntoken [%3d] %%s l%%d c%%d\","
+      "\n          yytext, lxr_line_no, lxr_col_no);"
       "\n        break;", i+1, i+1);
     #else
     fprintf (out,
@@ -342,6 +343,7 @@ int lxr_generate (FILE * in, FILE * out) {
     "\n.. that of EOB/EOL/EOF/BOL. However BOL transition is never"
     "\n.. used, as the state 2 is reserved for the starting DFA in"
     "\n.. case of BOL status."
+    "\n*/"
     "\n#define lxr_nclass       %3d          /* num of eq classes */"
     "\n#define lxr_nel_class    %3d          /* new line  '\\n'    */"
     "\n#define lxr_eob_class    %3d          /* end of buffer     */"

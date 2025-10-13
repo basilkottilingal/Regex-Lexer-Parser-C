@@ -107,9 +107,10 @@ void nfa_reset ( char ** rgx, int nr ) {
     ERRB (err);
   }
 
+  csingle ['\n'] = 1;                      /* force '\n' to a class */
   for (int c=0; c<256; ++c)
-    if (csingle [c])
-      class_char ( c );/* refine for each single character eq class */
+    if (csingle [c])   /* refine for each single character eq class */
+      class_char ( c );
 
   if (err) {
     error ("nfa reset : unknown error in evaluating eq class");

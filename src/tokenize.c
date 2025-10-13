@@ -23,7 +23,22 @@
 int lxr_line_no = 1;
 int lxr_col_no = 1;
 
-#define lxr_tokenizer_init()                                         \
+/*
+.. The main lexer function. Returns 0, when EOF is encountered. So,
+.. don't use return value 0 inside any action.
+*/
+int lxr_lex () {
+
+  static int states [lxr_state_stack_size];
+  unsigned char * cls;
+  int state, class, acc_token, acc_len, stack_idx,
+    depth, token,
+    #ifdef lxr_eol_class
+    eol,
+    #endif
+    acc_len_old, acc_token_old, state_old;
+
+  #define lxr_tokenizer_init()                                       \
     do {                                                             \
       yytext [yyleng] = lxr_hold_char;                               \
       acc_len = (int) (lxr_bptr - lxr_start);                        \
@@ -40,21 +55,6 @@ int lxr_col_no = 1;
       acc_token = 0;                                                 \
       lxr_clear_stack();                                             \
     } while (0) 
-
-/*
-.. The main lexer function. Returns 0, when EOF is encountered. So,
-.. don't use return value 0 inside any action.
-*/
-int lxr_lex () {
-
-  static int states [lxr_state_stack_size];
-  unsigned char * cls;
-  int state, class, acc_token, acc_len, stack_idx,
-    depth, token,
-    #ifdef lxr_eol_class
-    eol,
-    #endif
-    acc_len_old, acc_token_old, state_old;
 
   lxr_tokenizer_init();
   do {                  /* Loop looking the longest token until EOF */
@@ -200,6 +200,15 @@ int lxr_input () {
   size_t idx = lxr_bptr++ - lxr_start;
   return (int) (unsigned char) 
    ( ((size_t) yyleng == idx) ? lxr_hold_char : yytext [idx] );
+}
+
+int lxr_unput () {
+  if ( (size_t) (lxr_bptr - lxr_start) > 0) {
+    size_t idx = (--lxr_bptr) - lxr_start;
+    return (int) (unsigned char) 
+      ( ((size_t) yyleng == idx) ? lxr_hold_char : yytext [idx] );
+  }
+  return EOF;               /*error : cannot undo beyond last token */
 }
 
 static void lxr_buffer_update () {

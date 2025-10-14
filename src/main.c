@@ -25,12 +25,16 @@ int main (int argc, char ** argv) {
   for (int i=1; i<argc; ++i) {
     if (argv[i][0] == '-') {
       if (!strcmp (argv [i], "-o")) {
-        if (argc <= ++i) {
+        if (argc == ++i) {
           fprintf (stderr, "\nmissing out put file");
           usages (argv[0]);
           exit (-1);
         }
         out = argv [i];
+        continue;
+      }
+      if (!strcmp (argv [i], "-p")) {
+        lxr_debug ();
         continue;
       }
       fprintf (stderr, "\nunknown flag %s", argv[i]);

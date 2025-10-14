@@ -525,6 +525,7 @@ int rgx_list_dfa ( char ** rgx, int nr, DState ** dfa ) {
   return hopcroft (nfa, dfa, nt, 1);
 }
 
+static int num_actions = 0;
 int rgx_lexer_dfa ( char ** rgx, int nr, DState ** dfa ) {
   int n, nt = 0;
   State * nfa = allocate ( sizeof (State) ),
@@ -542,6 +543,7 @@ int rgx_lexer_dfa ( char ** rgx, int nr, DState ** dfa ) {
     }
     nt += n;
   }
+  num_actions = nr;
   {
     /*
     .. handling EOF :
@@ -694,8 +696,7 @@ int dfa_tables (int *** tables, int ** tsize) {
   int n = nclass, m = nstates + 1;  /* additional '1' for EOB state */
   len [2] = len [3] = len [4] = m + 1;      /* can hold index : [m] */
   len [5] = n;  len [6] = 256;
-printf ("\n nstates %d m %d eob %d", nstates, m, m);
-printf ("\n class EOF %d EOB %d", EOF_CLASS, EOB_CLASS);
+
 
   int * base = allocate (m * sizeof (int)),
     * accept = allocate (m * sizeof (int)),
@@ -712,6 +713,17 @@ printf ("\n class EOF %d EOB %d", EOF_CLASS, EOB_CLASS);
   .. Will return the compressed linear tables, if it didn't
   .. encounter common errors like very large table requirement
   */
-  return rows_compression (rows_create (), tables, tsize, m, n );
+  int status = rows_compression (rows_create (), tables, tsize, m, n );
+  if (status < 0) return RGXERR;
 
+  #if 1                        /* fixme : make it compiler optional */
+  printf ("\nstats :"
+    "\n  no: of states %d"
+    "\n  no: of tokens %d"
+    "\n  no: of equivalence class (excluding EOF, EOL, BOL, BOL) %d"
+    "\n  table sizes: (check [], next[]) %d",
+      nstates, num_actions, nclass - BCLASSES, len[0] ); 
+  #endif
+
+  return 0;
 }

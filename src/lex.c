@@ -10,7 +10,7 @@
 .. %%
 .. user code
 ..
-*/
+flex file.l*/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +24,11 @@
 
 #define LXR_DEBUG
 
-static FILE * out;
+static FILE * out = NULL;
+static FILE * in = NULL;
+
+static char * infile = NULL;
+static char * outfile = NULL;
 
 /*
 .. Flex macro that holds a regex pattern. Macro naming should follow
@@ -174,6 +178,7 @@ static Macro ** lookup (const char * key) {
 
 
 static int line = 0;
+
 /*
 .. Read a new macro and insert it into the hashtable and corresponding
 .. regex pattern
@@ -288,9 +293,6 @@ static int macro_new (char * macro, char * pattern) {
        (rgx [0] == '(' && rgx [len-1] == ')') ) ) {
     error ("warning : bracket, ( ), suggested for macro %s", macro);
   }
-  #if 0
-  printf ("\nmacro %s rgx %s", macro, rgx); fflush (stdout);
-  #endif
   
   return 0;
 }
@@ -300,12 +302,13 @@ static int macro_new (char * macro, char * pattern) {
 .. until first ^%%, is called the definition where you define regex
 .. macros and pre-lexer code snippets
 */
-int lex_read_definitions ( FILE * in ) {
+int lex_read_definitions () {
 
   char buff [PAGE_SIZE], *ptr, c;
   int code = 0, comment = 0;
 
   while (fgets (buff, sizeof buff, in)) {       /*read line by line */
+
     line++;
 
     size_t len = strlen (buff);
@@ -317,7 +320,8 @@ int lex_read_definitions ( FILE * in ) {
 
     if (code) {                   /* .. Source code section ^%{ ^%} */
       if ( buff [0] == '%' && buff [1] == '}' ) {
-        code = 0; continue;
+        code = 0;
+        continue;
       }
       Snippet * s = allocate ( sizeof (Snippet) );
       s->code = allocate_str (buff);
@@ -337,15 +341,19 @@ int lex_read_definitions ( FILE * in ) {
     }
     if (comment || c == ' ' || c == '\t' || c == '\n') {
       do {         /* consume comments, white spaces and empty line */
-        if (c == '\n') break;
+        if (c == '\n')
+          break;
         if (comment) {
           if (c == '*' && *ptr++ == '/') comment = 0;
           continue;
         }
         if ( c == '/' && *ptr == '*' ) {
-          ++ptr; comment = 1; continue;
+          ++ptr;
+          comment = 1;
+          continue;
         }
-        if (c == ' ' || c == '\t') continue;
+        if (c == ' ' || c == '\t')
+          continue;
 
         error ("content should be placed at BOL");
         return RGXERR;
@@ -419,11 +427,17 @@ int lex_read_definitions ( FILE * in ) {
 .. line. The regex will be stored in the buffer "rgx".
 */
 static
-int _pattern (FILE * in, char * rgx, size_t lim) {
-  int c, len = 0, escape = 0, charclass = 0, quote = 0, end = 0;
+int _pattern (char * rgx, size_t lim) {
+
   #define MACROLIM 128
+  #define EMPTY    10
+  #define NOACTION 11
+
+  int c, len = 0, escape = 0, charclass = 0, quote = 0, end = 0;
   char macro [MACROLIM];
+
   while ( (c = fgetc(in)) != EOF ) {
+
     rgx[len++] = (char) c;
     if (len == lim - 2) {
       error ( "rgx buff limit" );
@@ -439,19 +453,24 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
     }
     if (quote) {
       switch (c) {
-        case '"' : len--; quote = 0; break;
+        case '"' :
+          len--;
+          quote = 0;
+          break;
         case '|' : case '*' : case '?' : case '+' :
         case '[' : case ']' : case '{' : case '}' :
         case '(' : case ')' : case '^' : case '$' :
         case '-' : case '.' : case '\\' :
-          rgx [len-1] = '\\'; rgx [len++] = c; break;
+          rgx [len-1] = '\\';
+          rgx [len++] = c;
+          break;
+        default :
       }
       continue;
     }
     if (c == '\n') {
+
       ++line;
-      #define EMPTY 10
-      #define NOACTION 11
       if ( len == 1 )
         return EMPTY;                                 /* Empty line */
       rgx[--len] = '\0';
@@ -513,12 +532,16 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
           rgx [len++] = c;
           continue;
         }
+
         if ( !(c == '_' || (c >= 'a' && c <= 'z') ||
           (c >= 'A' && c <= 'Z')) )
           return RGXERR;
+
         do {
-          if (c == '}') break;
-          if (k == MACROLIM-2) return RGXOOM;
+          if (c == '}')
+            break;
+          if (k == MACROLIM-2)
+            return RGXOOM;
           if ( c == '_' || (c >= 'a' && c <= 'z') ||
             (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') )
             {
@@ -527,7 +550,10 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
             }
           return RGXERR;
         } while ( (c = fgetc (in)) != EOF );
-        if ( c!= '}') return RGXERR;
+
+        if ( c!= '}')
+          return RGXERR;
+
         macro [k] = '\0';
         Macro ** p = lookup (macro), *m;
         if ( (m = *p) == NULL ) {
@@ -543,7 +569,8 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
         len += l;
         break;
       case '"' :
-        --len; quote = 1;
+        --len;
+        quote = 1;
         break;
     }
   }
@@ -563,7 +590,8 @@ int _pattern (FILE * in, char * rgx, size_t lim) {
 .. the regex pattern
 */
 static
-int _action (FILE * in, char * buff, size_t lim) {
+int _action (char * buff, size_t lim) {
+
   int c, j = 0, depth = 0, quote = 0, escape = 0;
 
   /*
@@ -652,7 +680,7 @@ void pattern_action ( const char * r, const char * a, int line) {
   stack_push (actions, A);
 }
 
-int lex_read_rules ( FILE * in ) {
+int lex_read_rules ( ) {
 
   actions = stack_new (0);
 
@@ -662,7 +690,7 @@ int lex_read_rules ( FILE * in ) {
   for (;;) {
     cline = line;
     /* Read rgx pattern */
-    status = _pattern (in, rgx, sizeof (rgx));
+    status = _pattern (rgx, sizeof (rgx));
     if ( status == EOF ) break;
     if ( status == EMPTY ) continue;
     if ( status == RGXERR ) {
@@ -677,7 +705,7 @@ int lex_read_rules ( FILE * in ) {
     #undef NOACTION
 
     /* Read the action for the above regex pattern */
-    status = _action (in, action, sizeof (action));
+    status = _action (action, sizeof (action));
     if ( status == RGXERR ) {
       error ("failed reading rule-action near line %d", line);
       return RGXERR;
@@ -692,7 +720,7 @@ int lex_read_rules ( FILE * in ) {
 .. Create DFA from regex patterns, create the compressed tables for
 .. lexical analysis and print the tables
 */
-int lex_print_tables () {
+static int lex_print_tables () {
 
   int nrgx = (int) ( actions->len / sizeof (void *) );
   char ** rgx = allocate ( nrgx * sizeof (char *) );
@@ -767,15 +795,16 @@ int lex_print_tables () {
   return 0;
 }
 
-int lex_print_lxr_fnc () {
+static int lex_print_lxr_fnc () {
+
   char buf[BUFSIZ];
   size_t n;
-  FILE *in = fopen("../src/tokenize.c", "r");
+  FILE * source = fopen("./src/tokenize.c", "r");
 
-  if (!in)
+  if (!source)
     return RGXERR;
 
-  while (fgets (buf, sizeof buf, in)) {
+  while (fgets (buf, sizeof buf, source)) {
     size_t l = strlen (buf);
     if (buf [l-1] != '\n') {
       error ("insuff buff"); return RGXOOM;
@@ -794,61 +823,69 @@ int lex_print_lxr_fnc () {
   Action ** A = (Action **) actions->stack;
   for (int i=0; i < nrgx; ++i) {
     fprintf (out,
-      "\n      case %d :"
-      "\n        # line %d %s", i+1, A[i]->line, "lexer.l");
+      "\n        case %d :"
+      "\n          # line %d \"%s\"", i+1, A[i]->line, outfile);
     #ifdef LXR_DEBUG
     (void) A;
     fprintf (out,
-      "\n        printf (\"\\nl%%3d c%%3d: token [%3d] %%s\","
-      "\n          lxr_line_no, lxr_col_no, yytext);"
-      "\n        break;", i+1);
+      "\n          printf (\"\\nl%%3d c%%3d: token [%3d] %%s\","
+      "\n            lxr_line_no, lxr_col_no, yytext);"
+      "\n          break;", i+1);
     #else
     fprintf (out,
-      "\n        %s\n        break;", A[i]->action);
+      "\n          %s\n"
+      "\n          break;", A[i]->action);
     #endif
   }
 
   fprintf (out, "\n");
-  while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
+  while ((n = fread(buf, 1, sizeof buf, source)) > 0) {
     if (fwrite(buf, 1, n, out) != n)
       return RGXERR;
   }
 
-  fclose(in);
+  fclose (source);
   return 0;
 }
 
-void lex_print_snippets () {
+static void lex_print_snippets () {
+
+  if (snippet_head == NULL) return;
+
   int line = snippet_head->line;
-  fprintf (out, "\n# line %d %s", line, "lexer.l"); //fixme
+  fprintf (out, "\n# line %d \"%s\"", line, infile);;
   Snippet * s = snippet_head;
+
   while (s) {
     if (line++ != s->line) {
       line = s->line;
-      fprintf (out, "\n# line %d %s", line, "lexer.l"); //fixme
+      fprintf (out, "\n# line %d \"%s\"", line, infile);
     }
     fprintf (out, "%s", s->code);
     s = s->next;
   }
+
 }
   
 int lex_print_source () {
+
   char buf[BUFSIZ];
   size_t n;
-  FILE * in = fopen("../src/source.c", "r");
-  if (!in)
+  FILE * source = fopen("./src/source.c", "r");
+  if (!source)
     return RGXERR;
 
-  while ((n = fread(buf, 1, sizeof buf, in)) > 0) {
+  while ((n = fread(buf, 1, sizeof buf, source)) > 0) {
     if (fwrite(buf, 1, n, out) != n)
       return RGXERR;
   }
 
-  fclose(in);
+  fclose (source);
   return 0;
 }
 
-int lex_print_last (FILE * in) {
+int lex_print_last () {
+
   char buff [BUFSIZ];
   size_t n;
   while ((n = fread(buff, 1, sizeof buff, in)) > 0) {
@@ -856,58 +893,82 @@ int lex_print_last (FILE * in) {
       return RGXERR;
   }
   return 0;
+
 }
 
-int read_lex_input (FILE * fp, FILE * _out) {
-  if (!fp) {
-    error ("missing in/out");
+int read_lex_input ( const char * _in_, const char * _out_ ) {
+
+  infile = allocate_str (_in_ == NULL ? "<stdin>" : _in_);
+  in = (_in_ != NULL) ? fopen ( infile, "r" ) : stdin;
+  if (in == NULL) {
+    error ("cannot find input %s", infile);
     return RGXERR;
   }
-  out = _out ? _out : stdout;
+
+  outfile = allocate_str (_out_ == NULL ? "lxr.c" : _out_);
+  out = fopen ( outfile, "w" );
+  if (out == NULL) {
+    error ("cannot write to %s", _out_);
+    return RGXERR;
+  }
 
   line = 0;
 
-  fprintf (out, "\n# line 1 %s", "out.c"); //fixme
-  if (lex_read_definitions (fp) < 0) {
-    error ("failed reading defintion section. line %d", line);
+  fprintf (out, "\n# line 1 \"%s\"", outfile);
+  if (lex_read_definitions () < 0) {
+    error ("failed reading definition section. line %d", line);
     return RGXERR;
   }
     
   line++;
 
-  if (lex_read_rules (fp) < 0) {
+  if (lex_read_rules () < 0) {
     error ("failed reading rules section. line %d", line);
     return RGXERR;
   }
 
-  errors (); /* Flush any warnings */
+  errors ();                  /* Flush any warnings to stderr*/
 
   lex_print_snippets ();
+  fflush (in);
 
-  fprintf (out, "\n# line 0 %s", "out.c"); //fixme
+  fprintf (out, "\n# line 0 \"%s\"", outfile);
   if (lex_print_tables () < 0) {
     error ("failed creating tables");
     return RGXERR;
   }
+  fflush (in);
 
   if (lex_print_source () < 0) {
     error ("lxr : failed writing lexer head");
     return RGXERR;
   }
+  fflush (in);
 
   if (lex_print_lxr_fnc () < 0) {
     error ("failed writing lexer function");
     return RGXERR;
   }
+  fflush (in);
 
-  fprintf (out, "\n# line %d %s", line+1, "lexer.l");
-  lex_print_last (fp);
+  fprintf (out, "\n# line %d \"%s\"", line+1, infile);
+  lex_print_last ();
 
   #ifdef LXR_DEBUG
-  fprintf (out, "\n# line %d %s", 0, "out.c"); //fixme :
+  fprintf (out, "\n# line %d \"%s\"", 0, outfile);
   fprintf (out,
-    "\nint main () {\n  lxr_lex ();\n  return 0;\n}" );
+    "\nint main () {"
+    "\n  while (lxr_lex ()) {"
+    "\n  }"
+    "\n"
+    "\n  return 0;"
+    "\n}");
   #endif
+  fflush (in);
+
+  if (_in_ != NULL)
+    fclose ( in );
+  fclose ( out );
 
   return 0;
 }

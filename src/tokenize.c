@@ -66,14 +66,13 @@ int lxr_lex () {
     
     do {                            /* Transition loop until reject */
       class = (int) *lxr_bptr++;
-      states [--stack_idx] = state; 
+      states [--stack_idx] = state;         /* Keep stack of states */
 
       /*
       .. find the transition corresponding to the class using check/
       .. next tables and if not found in [base, base + nclass), use
-      .. the fallback. Each Keep stack of states
-      .. Note: (a) No meta class as of now. (b) assumes transition
-      .. is DEAD if number of fallbacks reaches lxr_max_depth
+      .. the fallback.Note: (a) No meta class as of now. (b) assumes
+      .. transition is DEAD if number of fallbacks reaches max_depth
       */
       depth = 0;
       while ( lxr_not_rejected (state) && 
@@ -82,9 +81,6 @@ int lxr_lex () {
           (int) lxr_def [state];
       }
 
-      /*
-      .. Keep stack of states
-      */
       if ( lxr_not_rejected (state) )
         state = (int) lxr_next [lxr_base[state] + class];
 
@@ -159,6 +155,8 @@ int lxr_lex () {
     do {   /* Just used a newer block to avoid clash of identifiers */
 
       switch ( acc_token ) {
+        case 0 :                                 /* Unknown pattern */
+          break;
 
         /*% replace this line with case <token> : <action>  break; %*/
 
@@ -172,20 +170,28 @@ int lxr_lex () {
           lxr_buffer_update ();
           break;
 
-        default :                                /* Unknown pattern */
+        default :
+          fprintf (stderr, "internal error : unknown accept state");
+          exit (-1);
 
       }
     } while (0);
 
-    if (acc_token == lxr_eob_accept) {
-      state = (stack_idx == lxr_state_stack_size) ? 
-        state_old : states [stack_idx];
-      acc_len = acc_len_old;
-      acc_token = acc_token_old;                      /* backing up */
-      continue; /* continue from where we stopped lexing bcz of eob */
+    if (acc_token != lxr_eob_accept) {
+      lxr_tokenizer_init ();           /* start reading a new token */
+      continue;
     }
 
-    lxr_tokenizer_init ();             /* start reading a new token */
+    /*
+    .. In case of EOB, we have to restart from the last state before
+    .. the lxr_eob_class transition. Reset acc_len and acc_token to
+    .. their backup ( In case there is no accepting state in the stack
+    .. "states [] ". )
+    */
+    state = (stack_idx == lxr_state_stack_size) ? 
+      state_old : states [stack_idx];
+    acc_len = acc_len_old;
+    acc_token = acc_token_old;
 
   } while (1);
 
@@ -196,10 +202,17 @@ int lxr_lex () {
 .. input/unput not yet tested
 */
 int lxr_input () {
-  if (*lxr_bptr == lxr_eob_class)
+
+  if (*lxr_bptr == lxr_eob_class) {
+    yytext [yyleng] = lxr_hold_char;
     lxr_buffer_update ();
+    lxr_hold_char = yytext [yyleng];
+    yytext [yyleng] = '\0';
+  }
+
   if (*lxr_bptr == lxr_eof_class)
     return EOF;
+
   size_t idx = lxr_bptr++ - lxr_start;
   return (int) (unsigned char) 
    ( ((size_t) yyleng == idx) ? lxr_hold_char : yytext [idx] );

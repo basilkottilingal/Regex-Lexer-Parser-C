@@ -22,13 +22,31 @@ flex file.l*/
 #include "regex.h"
 #include "class.h"
 
-#define LXR_DEBUG
+static int isdebug = 0;
+void lxr_debug () {
+  isdebug = 1;
+}
 
 static FILE * out = NULL;
 static FILE * in = NULL;
 
 static char * infile = NULL;
 static char * outfile = NULL;
+
+#if 0
+int line_out = 1;
+void output ( char * revert, char * buff, int len) {
+  if (revert) {            /* revert line_no, "filename" to outfile */
+    fprintf (out,"\n%s# line %d \"%s\"",
+      revert, ++line_out, outfile);
+  }
+  fwrite (buff, 1, len, out);
+  char c;
+  while ( (c = *buff++) )
+    if (c == '\n')
+      line_out++;
+}
+#endif
 
 /*
 .. Flex macro that holds a regex pattern. Macro naming should follow
@@ -792,6 +810,7 @@ static int lex_print_tables () {
     fprintf ( out, "\n};" );
   }
 
+  fflush (in);
   return 0;
 }
 
@@ -825,17 +844,15 @@ static int lex_print_lxr_fnc () {
     fprintf (out,
       "\n        case %d :"
       "\n          # line %d \"%s\"", i+1, A[i]->line, outfile);
-    #ifdef LXR_DEBUG
-    (void) A;
-    fprintf (out,
-      "\n          printf (\"\\nl%%3d c%%3d: token [%3d] %%s\","
-      "\n            lxr_line_no, lxr_col_no, yytext);"
-      "\n          break;", i+1);
-    #else
+    if (isdebug) {
+      fprintf (out,
+        "\n          printf (\"\\nl%%3d c%%3d: token [%3d] %%s\","
+        "\n            lxr_line_no, lxr_col_no, yytext);"
+        "\n          break;", i+1);
+    }
     fprintf (out,
       "\n          %s\n"
       "\n          break;", A[i]->action);
-    #endif
   }
 
   fprintf (out, "\n");
@@ -845,6 +862,7 @@ static int lex_print_lxr_fnc () {
   }
 
   fclose (source);
+  fflush (in);
   return 0;
 }
 
@@ -865,6 +883,7 @@ static void lex_print_snippets () {
     s = s->next;
   }
 
+  fflush (in);
 }
   
 int lex_print_source () {
@@ -881,6 +900,7 @@ int lex_print_source () {
   }
 
   fclose (source);
+  fflush (in);
   return 0;
 }
 
@@ -930,26 +950,22 @@ int read_lex_input ( const char * _in_, const char * _out_ ) {
   errors ();                  /* Flush any warnings to stderr*/
 
   lex_print_snippets ();
-  fflush (in);
 
   fprintf (out, "\n# line 0 \"%s\"", outfile);
   if (lex_print_tables () < 0) {
     error ("failed creating tables");
     return RGXERR;
   }
-  fflush (in);
 
   if (lex_print_source () < 0) {
     error ("lxr : failed writing lexer head");
     return RGXERR;
   }
-  fflush (in);
 
   if (lex_print_lxr_fnc () < 0) {
     error ("failed writing lexer function");
     return RGXERR;
   }
-  fflush (in);
 
   fprintf (out, "\n# line %d \"%s\"", line+1, infile);
   lex_print_last ();
@@ -964,7 +980,6 @@ int read_lex_input ( const char * _in_, const char * _out_ ) {
     "\n  return 0;"
     "\n}");
   #endif
-  fflush (in);
 
   if (_in_ != NULL)
     fclose ( in );

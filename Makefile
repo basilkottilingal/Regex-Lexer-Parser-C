@@ -15,6 +15,7 @@ TST    = test/nfa.c test/dfa.c test/bits.c test/tokens-nfa.c         \
 RUN    = $(patsubst test/%.c, obj/%.tst, $(TST))
 
 $(RUN) $(OBJ): | obj
+
 obj:
 	mkdir -p obj
 
@@ -62,6 +63,6 @@ all: obj/rgx.a
 	$(MAKE) obj/min-dfa.tst
 	$(MAKE) obj/hopcroft.tst
 	$(MAKE) obj/tokens-nfa.tst
-	#$(MAKE) obj/tbl-json.tst
-	#$(MAKE) obj/c-tokens.ltst
-	#$(MAKE) obj/read_lex.ltst
+	$(MAKE) languages/json/json.lxr
+	$(MAKE) languages/c/c99.lxr
+	$(MAKE) languages/basic/lexer.lxr

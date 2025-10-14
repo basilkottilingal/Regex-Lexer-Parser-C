@@ -1,4 +1,6 @@
 
+%%
+
 /\*           { ast->loc.column += 2; comment(ast); }
 //.*$        { /* fixme : it should be //.*$  Neglect */ }
 
@@ -64,7 +66,7 @@ __func__                            { _TOKEN_(FUNC_NAME); }
 (0[xX])[a-fA-F0-9]+\.([Pp][+-]?[0-9]+)(f|F|l|L)?                 { _TOKEN_(F_CONSTANT); }
 
 
-((u8|u|U|L)?"([^"\\\n]|(\\(['"?\\abfnrtv]|[0-7]{1,3}|x[a-fA-F0-9]+)))*"[ \t\v\n\f]*)+   { _TOKEN_ESC_KEYS_(STRING_LITERAL); }
+((u8|u|U|L)?\"([^"\\\n]|(\\(['"?\\abfnrtv]|[0-7]{1,3}|x[a-fA-F0-9]+)))*\"[ \t\v\n\f]*)+   { _TOKEN_ESC_KEYS_(STRING_LITERAL); }
 
 
 \.\.\.        { _TOKEN_(ELLIPSIS); }
@@ -120,3 +122,5 @@ __func__                            { _TOKEN_(FUNC_NAME); }
 [ \v\f\n\t]+             { AstLocRead(yytext); }
 
 .            { /* catch all*/ }
+
+%%

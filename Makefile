@@ -5,7 +5,7 @@ C99    = -std=c99 -pedantic
 RGX    = src/debug.c src/regex.c src/nfa.c src/dfa.c src/allocator.c \
          src/stack.c src/bits.c src/error.c src/class.c              \
          src/compression.c
-LXR    = src/lexer.c src/lex.c
+LXR    = src/lex.c
 OBJ    = $(patsubst src/%.c, obj/%.o, $(RGX))
 LOBJ   = $(patsubst src/%.c, obj/%.o, $(LXR))
 TST    = test/nfa.c test/dfa.c test/bits.c test/tokens-nfa.c         \
@@ -39,17 +39,17 @@ obj/lxr.a: $(OBJ) $(LOBJ) Makefile
 obj/%.s: test/%.c obj/rgx.a
 	$(CC) $(CFLAGS) -o obj/$* $^
 
-obj/%.ls: test/%.c obj/lxr.a
-	$(CC) $(CFLAGS) -o obj/$* $^
-
 obj/%.tst: obj/%.s
-	cd obj/ && ./$*
-
-obj/%.ltst: obj/%.ls
 	cd obj/ && ./$*
 
 clean:
 	rm -f ./obj/*
+
+lxr: src/main.c obj/lxr.a Makefile
+	$(CC) $(CFLAGS) -o lxr src/main.c obj/lxr.a
+
+%.lxr: %.lex lxr
+	./lxr -o $*.c < $< 
 
 all: obj/rgx.a
 	$(MAKE) obj/dfa.tst
@@ -59,10 +59,9 @@ all: obj/rgx.a
 	$(MAKE) obj/charclass.tst
 	$(MAKE) obj/quantifier.tst
 	$(MAKE) obj/json.tst
-	$(MAKE) obj/tbl-json.tst
 	$(MAKE) obj/min-dfa.tst
 	$(MAKE) obj/hopcroft.tst
 	$(MAKE) obj/tokens-nfa.tst
-	$(MAKE) obj/lxrgrammar.ltst
-	$(MAKE) obj/c-tokens.ltst
-	$(MAKE) obj/read_lex.ltst
+	#$(MAKE) obj/tbl-json.tst
+	#$(MAKE) obj/c-tokens.ltst
+	#$(MAKE) obj/read_lex.ltst

@@ -60,11 +60,24 @@ static size_t lxr_size = LXR_BUFF_SIZE;
 .. range [0x00, 0xFF]. Exception : EOF (-1).
 */
 int lxr_input ();
+/*
+.. The default unput function that outputs byte by byte, each in the
+.. range [0x00, 0xFF]. Exception : Error (-1). Limit : you can unput
+.. until the beginning of the last token.
+*/
+int lxr_unput ();
 static void lxr_buffer_update ();
-
 void lxr_clean () {
   /*
   .. Free all the memory blocks created for buffer.
   .. User required to run this at the end of the program
   */
+  lxr_stack * s = lxr_current, * next;
+  while (s != NULL) {
+    next = s->next;
+    free (s->bytes);
+    free (s->class);
+    free (s);
+    s = next;
+  }
 }

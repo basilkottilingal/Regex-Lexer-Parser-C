@@ -1,3 +1,5 @@
+%%
+
 aa|b       { printf ("0"); }
 a(a|b)     { printf ("1"); }
 bc+        { printf ("3"); }
@@ -6,3 +8,5 @@ abc$       {}
 ^abc       {}
 abc        {}
 abcd       {}
+
+%%

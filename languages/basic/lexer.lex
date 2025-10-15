@@ -1,12 +1,20 @@
 %%
 
-aa|b       { printf ("0"); }
-a(a|b)     { printf ("1"); }
-bc+        { printf ("3"); }
-(a|b)+0    { printf ("5"); }
-abc$       {}
-^abc       {}
-abc        {}
-abcd       {}
+aa|b       { return 1; }
+a(a|b)     { return 2; }
+bc+        { return 3; }
+(a|b)+0    { return 4; }
+abc$       { return 5; }
+^abc       { return 6; }
+abc        { return 7; }
+abcd       { return 8; }
 
 %%
+
+int main () {
+  int tkn;
+  while ( (tkn = lxr_lex()) ) {
+    printf ("\nl%d c%2d: [tkn : %d] %s",
+      lxr_line_no, lxr_col_no, tkn, yytext);
+  }   
+}

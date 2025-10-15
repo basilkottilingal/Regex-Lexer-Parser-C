@@ -33,7 +33,7 @@ int main (int argc, char ** argv) {
         out = argv [i];
         continue;
       }
-      if (!strcmp (argv [i], "-p")) {
+      if (!strcmp (argv [i], "-d")) {
         lxr_debug ();
         continue;
       }

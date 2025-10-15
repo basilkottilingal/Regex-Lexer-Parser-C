@@ -33,7 +33,7 @@ int lxr_lex () {
   unsigned char * cls;
   int state, class, acc_token, acc_len, stack_idx,
     depth, token,
-    #ifdef lxr_eol_class
+    #if lxr_eol_class
     eol,
     #endif
     acc_len_old, acc_token_old, state_old;
@@ -95,7 +95,7 @@ int lxr_lex () {
       .. (c) NOTE : in case no pattern use the EOL anchor '$', the
       .. following optional snippet will be skipped.
       */
-      #ifdef lxr_eol_class
+      #if lxr_eol_class
       if ( *cls == lxr_eof_class || *cls == lxr_nel_class ) {
         eol = states [stack_idx];
         depth = 0;

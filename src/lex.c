@@ -610,7 +610,15 @@ int _pattern (char * rgx, size_t lim) {
 static
 int _action (char * buff, size_t lim) {
 
-  int c, j = 0, depth = 0, quote = 0, escape = 0;
+  int c, j = 0, depth = 0, quote = 0, escape = 0, comment = 0;
+  #define PUSH(c)   do {                                             \
+    if (c == '\n') ++line;                                           \
+    buff [j++] = c;                                                  \
+    if (j == lim) {                                                  \
+      error ("action buff limit");                                   \
+      return RGXERR;                                                 \
+    }                                                                \
+  } while (0)
 
   /*
   .. Consume white spaces before encountering '{' i.e start of action.
@@ -629,17 +637,19 @@ int _action (char * buff, size_t lim) {
     }
   }
 
+  if (!depth) {
+    error ("missing action");
+    return RGXERR;
+  }
+
   /*
   .. Doesn't validate C grammar that falls in action block { ... }.
   .. The whole action block will be stored inside 'buff' unless
   .. you run out of limit.
   */
-  while ( (c = fgetc(in)) != EOF ) {
-    buff[j++] = (char) c;
-    if (j == lim) {
-      error ( "action buff limit" );
-      return RGXERR;
-    }
+  while ( depth && (c = fgetc(in)) != EOF ) {
+
+    PUSH (c);
 
     if (c == '\n')
       line++;
@@ -649,25 +659,60 @@ int _action (char * buff, size_t lim) {
         escape = 0;
       else if (c == '\\')
         escape = 1;
-      else if (c == '"') {
-        quote  = 0;
+      else if (c == '"' || c == '\'') {
+        if (c != quote) {
+          error ( "wrong unquote" );
+          return RGXERR;
+        }
+        quote = 0;
+      }
+      continue;
+    }
+
+    if ( comment ) {
+      comment  = 0;
+      if ( c == '/' ) {
+        /* consuming single line comment */
+        while ( (c = fgetc(in)) != EOF ) {
+          PUSH (c);
+          if ( c == '\n' )
+            break;
+        }
+        continue;
+      }
+      else if ( c == '*') {
+        /* consuming multi line comment */
+        while ( (c = fgetc(in)) != EOF ) {
+          PUSH (c);
+          if ( c != '*' ) continue;
+          while ( (c = fgetc(in)) == '*' ) {
+            PUSH (c);
+          }
+          PUSH (c);
+          if ( c == '/' ) break;
+        }
         continue;
       }
     }
-    else {
-      if (c == '"') {
-        quote = 1;
-        continue;
-      }
-      if (c == '{')
+
+    switch (c) {
+      case '/' :
+        comment = 1;
+        break;
+      case '"'  :
+      case '\'' :
+        quote = c;
+        break;
+      case '{' :
         depth++;
-      else if (c == '}') {
+        break;
+      case '}' :
         depth--;
-        if (!depth)
-          break;
-      }
+        break;
     }
+      
   }
+
   buff[j] = '\0';
 
   if (depth) {
@@ -776,19 +821,22 @@ static int lex_print_tables () {
     "\n.. classes also counts the special equivalence classes like"
     "\n.. that of EOB/EOL/EOF/BOL. However BOL transition is never"
     "\n.. used, as the state 2 is reserved for the starting DFA in"
-    "\n.. case of BOL status."
+    "\n.. case of BOL status. lxr_eol_class will be set to 0 in case"
+    "\n.. no patterns are found with EOL requirement."
     "\n*/"
     "\n#define lxr_nclass       %3d          /* num of eq classes */"
     "\n#define lxr_nel_class    %3d          /* new line  '\\n'    */"
     "\n#define lxr_eob_class    %3d          /* end of buffer     */"
     "\n#define lxr_eol_class    %3d          /* end of line       */"
     "\n#define lxr_eof_class    %3d          /* end of file       */",
-    nclass, class ['\n'], EOB_CLASS, EOL_CLASS, EOF_CLASS );
+    nclass, class ['\n'], EOB_CLASS,
+    dfa_eol_used () ? EOL_CLASS : 0, EOF_CLASS );
 
   fprintf ( out, 
     "\n\n/*"
-    "\n.. Accept state used internally. States [1, %d] are reserved"
-    "\n.. for tokens listed in the lex source file"
+    "\n.. States [1, %d] are reserved for tokens listed in the lex "
+    "\n.. source file. In addition, the following two accept states"
+    "\n.. are used internally for EOF/EOB"
     "\n*/"
     "\n#define lxr_eof_accept   %3d   /* end of file       */"
     "\n#define lxr_eob_accept   %3d   /* end of buffer     */",

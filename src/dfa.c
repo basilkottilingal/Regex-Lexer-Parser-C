@@ -665,6 +665,13 @@ static Row ** rows_create () {
   #undef HASH
 }
 
+int dfa_eol_used () {
+  for (int i=0; i<nstates; ++i)
+    if (states [i]->next [EOL_CLASS] != NULL)
+      return 1;
+  return 0;
+}
+
 int dfa_tables (int *** tables, int ** tsize) {
 
   /*

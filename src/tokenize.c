@@ -156,6 +156,10 @@ int lxr_lex () {
 
       switch ( acc_token ) {
         case 0 :                                 /* Unknown pattern */
+          #ifdef lxr_exception_fail
+          fprintf (stderr, "unknown token");
+          exit (-1);
+          #endif
           break;
 
         /*% replace this line with case <token> : <action>  break; %*/
@@ -235,7 +239,6 @@ static void lxr_buffer_update () {
       lxr_bptr [1] != lxr_eob_class)
   {
     fprintf (stderr, "lxr_buffer_update () : internal check failed");
-    fprintf (stderr, "[%d, %d]", lxr_bptr [0], lxr_bptr [1]);
     exit (-1);
   }
     

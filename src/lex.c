@@ -651,21 +651,13 @@ int _action (char * buff, size_t lim) {
 
     PUSH (c);
 
-    if (c == '\n')
-      line++;
-
     if (quote) {
       if (escape)
         escape = 0;
       else if (c == '\\')
         escape = 1;
-      else if (c == '"' || c == '\'') {
-        if (c != quote) {
-          error ( "wrong unquote" );
-          return RGXERR;
-        }
+      else if (c == quote)
         quote = 0;
-      }
       continue;
     }
 

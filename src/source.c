@@ -66,6 +66,19 @@ int lxr_input ();
 .. until the beginning of the last token.
 */
 int lxr_unput ();
+/*
+.. In case input() or unput () was called after accepting the last
+.. token, create a new token depending on the pointer
+*/
+void lxr_token () {
+  if ( yyleng == (int) (lxr_bptr - lxr_start) )
+    return;
+  yytext [yyleng] = lxr_hold_char;
+  yyleng = (int) (lxr_bptr - lxr_start);
+  lxr_hold_char = yytext [yyleng];
+  yytext [yyleng] = '\0';
+}
+
 static void lxr_buffer_update ();
 void lxr_clean () {
   /*

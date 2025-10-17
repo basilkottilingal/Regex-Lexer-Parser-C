@@ -830,8 +830,8 @@ static int lex_print_tables () {
     "\n.. source file. In addition, the following two accept states"
     "\n.. are used internally for EOF/EOB"
     "\n*/"
-    "\n#define lxr_eof_accept   %3d   /* end of file       */"
-    "\n#define lxr_eob_accept   %3d   /* end of buffer     */",
+    "\n#define lxr_eof_accept   %3d          /* end of file       */"
+    "\n#define lxr_eob_accept   %3d          /* end of buffer     */",
     nrgx, nrgx + 1, nrgx + 2 );
 
   /*
@@ -884,12 +884,12 @@ static int lex_print_lxr_fnc () {
     fprintf (out,
       "\n        case %d :"
       "\n          # line %d \"%s\"", i+1, A[i]->line, outfile);
-    if (isdebug) {
+    #if 0
       fprintf (out,
         "\n          printf (\"\\nl%%3d c%%3d: token [%3d] %%s\","
         "\n            lxr_line_no, lxr_col_no, yytext);"
         "\n          break;", i+1);
-    }
+    #endif
     fprintf (out,
       "\n          %s\n"
       "\n          break;", A[i]->action);

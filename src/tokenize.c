@@ -250,7 +250,7 @@ static void lxr_buffer_update () {
   */
   size_t size = lxr_size, non_parsed = lxr_bptr - lxr_start;
 
-  lxr_stack * s = lxr_current;
+  lxr_buff_stack * s = lxr_buff_stack_current;
   if (s == NULL || (yytext - s->bytes) > (size_t) 1 ) {
 
     while ( size <= non_parsed )
@@ -261,11 +261,11 @@ static void lxr_buffer_update () {
       fprintf (stderr, "lxr_alloc failed");
       exit (-1);
     }
-    * s = (lxr_stack) {
+    * s = (lxr_buff_stack) {
       .size  = size,
       .bytes = lxr_alloc (size + 2),
       .class = lxr_alloc (size + 2),
-      .next  = lxr_current
+      .next  = lxr_buff_stack_current
     };
     if ( s->bytes == NULL || s->class == NULL ) {
       fprintf (stderr, "lxr_alloc failed");
@@ -274,7 +274,7 @@ static void lxr_buffer_update () {
     memcpy (s->bytes, & yytext [-1], non_parsed + 1);
     memcpy (s->class, lxr_start,     non_parsed);
 
-    lxr_current = s; 
+    lxr_buff_stack_current = s; 
   }
   else {
     size = s->size * 2;

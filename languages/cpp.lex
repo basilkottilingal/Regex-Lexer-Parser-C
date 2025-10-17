@@ -2,24 +2,39 @@
 c preprocessor tokenizer
 */
 
-ES  (\\(['"\?\\abfnrtv]|[0-7]{1,3}|x[a-fA-F0-9]+))
-WS  ([ \t]|\\\n)
-STRING \"([^"\\\n]|{ES})*\"
+S       [ \t]
+WS      ([ \t]|\\\n)
+ID      ([_a-zA-Z][_a-zA-Z0-9]*)
+ES      (\\(['"\?\\abfnrtv]|[0-7]{1,3}|x[a-fA-F0-9]+))
+STRING  \"([^"\\\n]|{ES})*\"
 
 %{
 
-#include "tokens.h"
-static int column = 1, line = 1;
-static char * file;
-void pp_location ();
-void pp_std_header ();
-void pp_local_header ();
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static int  column = 1, line = 1;
+static char * file = NULL;
+static char * source = NULL;
+static void location     ( );
+static void std_header   ( );
+static void local_header ( );
+
+enum STATUS {
+  IF,
+  ELSE,
+  DEFINE,
+  NONE 
+};
+
+static int pstatus = NONE;
  
 %}
 	 
 %%
 
-"/*"                                               {
+"/*"                                                   {
             int c;
             while ( (c = lxr_input () ) != EOF ) {
               if ( c != '*' ) continue;
@@ -27,21 +42,43 @@ void pp_local_header ();
               if ( c == '/' ) break;
             }
           }
-"//".*                                             { }
-^[ \t]*#[ \t]{WS}*[0-9]+[ \t]{WS}*{STRING}.*               {
-            pp_location ();
-          }
+"//".*                                                 { }
+^[ \t]*#[ \t]{WS}*[0-9]+[ \t]{WS}*{STRING}.*           {
+            printf ("\nfile-line %s:", yytext);
+            location ();
+          } 
 ^[ \t]*#{WS}*"include"{WS}*<[a-z_A-Z0-9/.\\+~-]+>.*    {
-            /* relative path headers */
-            printf ("\n%s:", yytext);
-            pp_std_header ();
-          }
-^[ \t]*#{WS}*"include"{WS}*{STRING}.*    {
             /* mostly a std header */
-            printf ("\n%s:", yytext);
-            pp_local_header ();
+            printf ("\nstd.h %s:", yytext);
+            std_header ();
           }
-^[ \t]*#	                                         {
+^[ \t]*#{WS}*"include"{WS}*{STRING}.*                  {
+            /* relative path headers */
+            printf ("\nheader %s:", yytext);
+            local_header ();
+          }
+^[ \t]*#{WS}*"if"                                      {
+            printf ("\nif %s:", yytext);
+          }
+^[ \t]*#{WS}*"elif"                                      {
+            printf ("\nelif %s:", yytext);
+          }
+^[ \t]*#{WS}*"else".*                                  {
+            printf ("\nelse %s:", yytext);
+          }
+^[ \t]*#{WS}*"endif".*                                 {
+            printf ("\nendi %s:", yytext);
+          }
+^[ \t]*#{WS}*"define"[ \t]{WS}*{ID}{WS}+               {
+            printf ("\ndefine 1 %s:", yytext);
+          }
+^[ \t]*#{WS}*"define"[ \t]{WS}*{ID}\(                  {
+            printf ("\ndefine 2 %s:", yytext);
+          }
+^[ \t]*#{WS}*"undef"[ \t]{WS}*{ID}.*                   {
+            printf ("\nundef %s:", yytext);
+          }
+^[ \t]*#	                                             {
             int c, p = '#';
             while ( (c = lxr_input () ) != EOF ) {
               /* ISO C : '\\' immediately followed by '\n' are ommitted */
@@ -54,26 +91,28 @@ void pp_local_header ();
               p = c;
             }
             lxr_token ();
-            printf ("\n%s:", yytext);
+            printf ("\nother %s:", yytext);
           }
-.					                              { /* catch all bad characters */ }
+(.|[\n])			                              { /* catch all bad characters */ }
 	 
 %%
 
-
-void pp_location () {
-  printf ("\n location");
+static
+void location () {
 }
 
-void pp_std_header () {
-  printf ("\n include <.h>");
+static
+void std_header () {
 }
 
-void pp_local_header () {
-  printf ("\n include \".h\"");
+static
+void local_header () {
 }
 
-int main () {
+int main ( int argc, char * argv[] ) {
+
+  
+  
   int tkn;
   while ( (tkn = lxr_lex()) ) {
     printf ("\n[%3d] : %s", tkn, yytext);

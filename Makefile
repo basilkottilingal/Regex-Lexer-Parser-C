@@ -66,3 +66,5 @@ all: obj/rgx.a
 	$(MAKE) languages/json/json.lxr
 	$(MAKE) languages/c/c99.lxr
 	$(MAKE) languages/basic/lexer.lxr
+	$(MAKE) languages/c99.lxr
+	$(MAKE) languages/cpp.lxr

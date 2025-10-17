@@ -16,5 +16,5 @@ int main () {
   while ( (tkn = lxr_lex()) ) {
     printf ("\nl%d c%2d: [tkn : %d] %s",
       lxr_line_no, lxr_col_no, tkn, yytext);
-  }   
+  } 
 }

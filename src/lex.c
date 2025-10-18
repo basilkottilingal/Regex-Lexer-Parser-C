@@ -33,20 +33,23 @@ static FILE * in = NULL;
 static char * infile = NULL;
 static char * outfile = NULL;
 
-#if 0
-int line_out = 1;
-void output ( char * revert, char * buff, int len) {
-  if (revert) {            /* revert line_no, "filename" to outfile */
-    fprintf (out,"\n%s# line %d \"%s\"",
-      revert, ++line_out, outfile);
+static int line_out = 1;
+static int echo ( char * buff) {
+  size_t len = strlen (buff);
+  if (fwrite (buff, 1, len, out) < len) {
+    error ("echo() failed");
+    return RGXERR;
   }
-  fwrite (buff, 1, len, out);
-  char c;
-  while ( (c = *buff++) )
-    if (c == '\n')
+  while ( *buff )
+    if ( *buff++ == '\n' )
       line_out++;
+  return 0;
 }
-#endif
+void echo_line ( char * source, int line ) {
+  line_out += 2;
+  fprintf (out,"\n# line %d \"%s\"\n",
+    source ? line : line_out, source ? source : outfile );
+}
 
 /*
 .. Flex macro that holds a regex pattern. Macro naming should follow
@@ -805,8 +808,9 @@ static int lex_print_tables () {
   };
 
   int nclass = len [5], * class = tables [6];
-   
-  fprintf ( out, 
+  
+  char buff [1024]; 
+  sprintf ( buff, 
     "\n/*"
     "\n.. Equivalence classes for alphabets in [0x00, 0xFF] are"
     "\n.. stored in the table lxr_class []. The number of equivalence"
@@ -823,8 +827,9 @@ static int lex_print_tables () {
     "\n#define lxr_eof_class    %3d          /* end of file       */",
     nclass, class ['\n'], EOB_CLASS,
     dfa_eol_used () ? EOL_CLASS : 0, EOF_CLASS );
+  echo (buff);
 
-  fprintf ( out, 
+  sprintf ( buff, 
     "\n\n/*"
     "\n.. States [1, %d] are reserved for tokens listed in the lex "
     "\n.. source file. In addition, the following two accept states"
@@ -833,6 +838,7 @@ static int lex_print_tables () {
     "\n#define lxr_eof_accept   %3d          /* end of file       */"
     "\n#define lxr_eob_accept   %3d          /* end of buffer     */",
     nrgx, nrgx + 1, nrgx + 2 );
+  echo (buff);
 
   /*
   .. write all tables, before main lexer function
@@ -840,14 +846,16 @@ static int lex_print_tables () {
   for (int i=0; i<7; ++i) {
     int * arr = tables [i], l = len [i];
     if (!arr) continue;
-    fprintf ( out, "\n\nstatic %s lxr_%s [%d] = {\n",
+    sprintf ( buff, "\n\nstatic %s lxr_%s [%d] = {\n",
       type [i], names[i], l );
+    echo (buff);
     for (int j=0; j<l; ++j) {
-      fprintf ( out, " %4d%s", arr[j], j == l-1 ? "" : ",");
-      if (j%10 == 0)  fprintf (out, "\n");
-      if (j%100 == 0) fprintf (out, "\n");
+      sprintf ( buff, " %4d%s", arr[j], j == l-1 ? "" : ",");
+      echo (buff);
+      if (j%10 == 0)   echo ("\n");
+      if (j%100 == 0)  echo ("\n");
     }
-    fprintf ( out, "\n};" );
+    echo ("\n};");
   }
 
   fflush (in);
@@ -856,50 +864,48 @@ static int lex_print_tables () {
 
 static int lex_print_lxr_fnc () {
 
-  char buf[BUFSIZ];
+  char buff[1024];
   size_t n;
   FILE * source = fopen("./src/tokenize.c", "r");
 
   if (!source)
     return RGXERR;
 
-  while (fgets (buf, sizeof buf, source)) {
-    size_t l = strlen (buf);
-    if (buf [l-1] != '\n') {
+  while (fgets (buff, sizeof buff, source)) {
+    size_t l = strlen (buff);
+    if (buff [l-1] != '\n') {
       error ("insuff buff"); return RGXOOM;
     }
     int j = 0; char c;
-    while ( (c = buf [j++]) != '\0' ) {
-      if ( c == '/' && buf [j] == '*' && buf [j+1] == '%' ) {
+    while ( (c = buff [j++]) != '\0' ) {
+      if ( c == '/' && buff [j] == '*' && buff [j+1] == '%' ) {
         j = -1; break;
       }
     }
     if (j == -1) break;
-    if (fputs (buf,out) == EOF)
-      return RGXERR;
+    echo (buff);
   }
   size_t nrgx = ( actions->len / sizeof (void *) );
   Action ** A = (Action **) actions->stack;
   for (int i=0; i < nrgx; ++i) {
-    fprintf (out,
+    fprintf ( out,
       "\n        case %d :"
-      "\n          # line %d \"%s\"", i+1, A[i]->line, outfile);
-    #if 0
-      fprintf (out,
-        "\n          printf (\"\\nl%%3d c%%3d: token [%3d] %%s\","
-        "\n            lxr_line_no, lxr_col_no, yytext);"
-        "\n          break;", i+1);
-    #endif
-    fprintf (out,
-      "\n          %s\n"
-      "\n          break;", A[i]->action);
+      "\n          # line %d \"%s\""
+      "\n          ", i+1, A[i]->line, infile);
+    echo ( A[i]->action );
+    fprintf ( out,
+      "\n          break;\n");
+    line_out += 5;
   }
 
-  fprintf (out, "\n");
-  while ((n = fread(buf, 1, sizeof buf, source)) > 0) {
-    if (fwrite(buf, 1, n, out) != n)
-      return RGXERR;
+  echo ("\n");
+  echo_line (NULL, 0);
+
+  while ((n = fread(buff, 1, sizeof (buff)-1, source)) > 0) {
+    buff [n] = '\0';
+    echo (buff);
   }
+    echo ("/*.. end */");
 
   fclose (source);
   fflush (in);
@@ -911,15 +917,16 @@ static void lex_print_snippets () {
   if (snippet_head == NULL) return;
 
   int line = snippet_head->line;
-  fprintf (out, "\n# line %d \"%s\"", line, infile);;
+  echo_line (infile, line);
   Snippet * s = snippet_head;
 
   while (s) {
     if (line++ != s->line) {
       line = s->line;
       fprintf (out, "\n# line %d \"%s\"", line, infile);
+      ++line_out;
     }
-    fprintf (out, "%s", s->code);
+    echo (s->code);
     s = s->next;
   }
 
@@ -928,15 +935,15 @@ static void lex_print_snippets () {
   
 int lex_print_source () {
 
-  char buf[BUFSIZ];
+  char buff[1024];
   size_t n;
   FILE * source = fopen("./src/source.c", "r");
   if (!source)
     return RGXERR;
 
-  while ((n = fread(buf, 1, sizeof buf, source)) > 0) {
-    if (fwrite(buf, 1, n, out) != n)
-      return RGXERR;
+  while ((n = fread(buff, 1, sizeof(buff)-1, source)) > 0) {
+    buff [n] = '\0';
+    echo (buff);
   }
 
   fclose (source);
@@ -946,11 +953,11 @@ int lex_print_source () {
 
 int lex_print_last () {
 
-  char buff [BUFSIZ];
+  char buff [1024];
   size_t n;
-  while ((n = fread(buff, 1, sizeof buff, in)) > 0) {
-    if (fwrite(buff, 1, n, out) != n)
-      return RGXERR;
+  while ((n = fread(buff, 1, sizeof(buff)-1, in)) > 0) {
+    buff [n] = '\0';
+    echo (buff);
   }
   return 0;
 
@@ -974,7 +981,6 @@ int read_lex_input ( const char * _in_, const char * _out_ ) {
 
   line = 0;
 
-  fprintf (out, "\n# line 1 \"%s\"", outfile);
   if (lex_read_definitions () < 0) {
     error ("failed reading definition section. line %d", line);
     return RGXERR;
@@ -991,7 +997,7 @@ int read_lex_input ( const char * _in_, const char * _out_ ) {
 
   lex_print_snippets ();
 
-  fprintf (out, "\n# line 0 \"%s\"", outfile);
+  echo_line (NULL, 0);
   if (lex_print_tables () < 0) {
     error ("failed creating tables");
     return RGXERR;
@@ -1007,19 +1013,8 @@ int read_lex_input ( const char * _in_, const char * _out_ ) {
     return RGXERR;
   }
 
-  fprintf (out, "\n# line %d \"%s\"", line+1, infile);
+  echo_line (infile, line+1);
   lex_print_last ();
-
-  #ifdef LXR_DEBUG
-  fprintf (out, "\n# line %d \"%s\"", 0, outfile);
-  fprintf (out,
-    "\nint main () {"
-    "\n  while (lxr_lex ()) {"
-    "\n  }"
-    "\n"
-    "\n  return 0;"
-    "\n}");
-  #endif
 
   if (_in_ != NULL)
     fclose ( in );

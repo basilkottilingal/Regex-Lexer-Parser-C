@@ -50,7 +50,7 @@ lxr: src/main.c obj/lxr.a Makefile
 	$(CC) $(CFLAGS) -o lxr src/main.c obj/lxr.a
 
 %.lxr: %.lex lxr
-	./lxr -o $*.c < $< 
+	./lxr -o $*.c $< 
 
 all: obj/rgx.a
 	$(MAKE) obj/dfa.tst

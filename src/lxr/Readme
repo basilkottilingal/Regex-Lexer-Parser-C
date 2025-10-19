@@ -1,0 +1,5 @@
+
+The contents of files of this directory is copied while creating lexer source file.
+(a) ./src/lxr/tokenize.c :  how the skeleton of main lxr_lex() function looks like
+(b) ./src/lxr/source.c   :  buffer handling functions
+(c) ./src/lxr/api.c      :  lists the api functions available in a lexer file

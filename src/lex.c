@@ -34,6 +34,7 @@ static char * infile = NULL;
 static char * outfile = NULL;
 
 static int line_out = 1;
+
 static int echo ( char * buff) {
   size_t len = strlen (buff);
   if (fwrite (buff, 1, len, out) < len) {
@@ -45,10 +46,12 @@ static int echo ( char * buff) {
       line_out++;
   return 0;
 }
+
 void echo_line ( char * source, int line ) {
   line_out += 2;
   fprintf (out,"\n# line %d \"%s\"\n",
-    source ? line : line_out, source ? source : outfile );
+    source ? line : line_out,
+    source ? source : outfile );
 }
 
 /*
@@ -412,7 +415,7 @@ int lex_read_definitions () {
         --ptr;
         int status = macro_new (buff, ptr);
         if (status < 0) {
-          error ("cannot create macro error %s", buff);
+          error ("cannot create macro %s", buff);
           return RGXERR;
         }
         break;
@@ -866,7 +869,7 @@ static int lex_print_lxr_fnc () {
 
   char buff[1024];
   size_t n;
-  FILE * source = fopen("./src/tokenize.c", "r");
+  FILE * source = fopen("./src/lxr/tokenize.c", "r");
 
   if (!source)
     return RGXERR;
@@ -905,7 +908,6 @@ static int lex_print_lxr_fnc () {
     buff [n] = '\0';
     echo (buff);
   }
-    echo ("/*.. end */");
 
   fclose (source);
   fflush (in);
@@ -923,8 +925,7 @@ static void lex_print_snippets () {
   while (s) {
     if (line++ != s->line) {
       line = s->line;
-      fprintf (out, "\n# line %d \"%s\"", line, infile);
-      ++line_out;
+      echo_line (infile, line);
     }
     echo (s->code);
     s = s->next;
@@ -937,7 +938,7 @@ int lex_print_source () {
 
   char buff[1024];
   size_t n;
-  FILE * source = fopen("./src/source.c", "r");
+  FILE * source = fopen("./src/lxr/source.c", "r");
   if (!source)
     return RGXERR;
 

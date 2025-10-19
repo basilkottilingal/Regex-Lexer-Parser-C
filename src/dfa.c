@@ -725,11 +725,11 @@ int dfa_tables (int *** tables, int ** tsize) {
 
   #if 1                        /* fixme : make it compiler optional */
   printf ("\nstats :"
-    "\n  no: of states %d"
-    "\n  no: of tokens %d"
-    "\n  no: of equivalence class (excluding EOF, EOL, BOL, BOL) %d"
-    "\n  table sizes: (check [], next[]) %d",
-      nstates, num_actions, nclass - BCLASSES, len[0] ); 
+    "\n  no: of states   %3d"
+    "\n  no: of tokens   %3d"
+    "\n  no: of eq class %3d (excluding EOF, EOL, BOL, BOL)"
+    "\n  table sizes     %3d (check[], next[])"
+    "\n", nstates, num_actions, nclass - BCLASSES, len[0] ); 
   #endif
 
   return 0;

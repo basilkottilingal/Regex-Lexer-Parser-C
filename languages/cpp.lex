@@ -8,7 +8,7 @@ WS      ([ \t]|\\\n)
 SP      ((\\\n)*[ \t]([ \t]|\\\n)*)
 ID      ([_a-zA-Z][_a-zA-Z0-9]*)
 ES      (\\(['"\?\\abfnrtv]|[0-7]{1,3}|x[a-fA-F0-9]+))
-STRING  \"([^"\\\n]|{ES})*\"
+STRING  (\"([^"\\\n]|{ES})*\")
 
 %{
   
@@ -16,23 +16,25 @@ STRING  \"([^"\\\n]|{ES})*\"
   #include <stdlib.h>
   #include <string.h>
   
-  static char * file = NULL;
+  FILE * out;
+  static char file [1024];
   static void location  ( );
   static void header    ( int is_std );
   static int  env_if    ( char * expr );
   static int  env_elif  ( char * expr );
   static int  env_else  ( );
-  static void env_endif ( );
+  static int  env_endif ( );
   static char * get_content ();
   static void define_macro ( );
   static void undefine_macro ( );
+  static void echo      ( char * str );
   
   /*
   .. Error reporting
   */
   #define cpp_error(...)  do {                                         \
       fprintf(stderr, "file %s line %d :", file, lxr_line_no );        \
-      fprintf(stderr, "cpp error", __VA_ARGS__);                       \
+      fprintf(stderr, ##__VA_ARGS__);                                  \
       exit(-1);                                                        \
     } while (0)
 %}
@@ -71,7 +73,7 @@ STRING  \"([^"\\\n]|{ES})*\"
           }
 ^[ \t]*#{WS}*"define"                                  {
             get_content ();
-            cpp_error ("unknown # define", yytext);
+            cpp_error ("unknown # define %s", yytext);
           }
 ^[ \t]*#{WS}*"define"{SP}{ID}                          {
             /* shouldn't clash with kwywords */
@@ -90,7 +92,7 @@ STRING  \"([^"\\\n]|{ES})*\"
 {ID}[ \t\n]*\(                            { /* see if it's a macro */
             printf ("\nfunc %s:", yytext);
           }
-{STRING}                                  {
+{STRING}                                             {
           }
 (\\\n)+                                   { /* consume */ }    
 (.|\n)			                              { /* echo */ }
@@ -104,7 +106,7 @@ STRING  \"([^"\\\n]|{ES})*\"
       if ( c == '\n' && p != '\\') break;
       p = c;
     }
-    lxr_tokenize ();
+    lxr_token ();
     return & yytext [len];
   }
   
@@ -120,16 +122,30 @@ STRING  \"([^"\\\n]|{ES})*\"
   /*
   .. Note __func__ is not a macro like __FILE__, __LINE__ or __TIME__
   */
+
+  static
+  void echo ( char * str ) {
+    fprintf (out, "%s", str);
+  }
+
+  static
+  void echo_line () {
+    fprintf (out, "\n# %d \"%s\"\n", lxr_line_no, file);
+  }
   
   static
   void location () {
     char * s = strchr (yytext, '#') + 1;
     lxr_line_no = atoi (s) - 1;
-    s = strchr (s, '"');
-    free (file);
-    file = strdup (s);
-    s = strchr (s, '"');
-    *s = '\0';
+    s = strchr (s, '"') + 1;
+    snprintf (file, sizeof file, "%s", s);
+    s = strchr (file, '"');
+    if (s)
+      *s = '\0';
+    #if 0
+    else
+      cpp_error ("very long source name");
+    #endif
     printf ("\n loc # %d \"%s\"", lxr_line_no, file);
   }
   
@@ -142,42 +158,21 @@ STRING  \"([^"\\\n]|{ES})*\"
     printf ("\nuser defined header %s", yytext);
   }
  
-  #if 0 
-  typedef enum {
-    IF,
+  enum {
+    NONE    = 0,
+    IF      = 1,
     ELSE,
     DEFINE,
-    NONE
-  } STATUS ;
+    SUCCESS = 16
+  };
   
   typedef struct Env {
-    STATUS status;
+    int status;
     struct Env * prev;
   } Env;
   
-  Env env_root = (Env) { NONE, NULL };
+  Env   env_root = (Env) { NONE, NULL };
   Env * env_head = & env_root;
-  
-  typedef struct Macro Macro;
-  static Macro ** macro_lookup ( const char * id );
-  static char *   macro_substitute ( Macro * m, char ** args );
-  typedef struct Macro {
-    char * key, * val, ** args;
-    struct Macro * next;
-    int  tu_scope;                   /* translation unit */
-  } Macro;
-  
-  Macro ** macros;                          /* hashtable */
-  #endif
-
-  static void define_macro () {
-    char * content = get_content ();
-    printf ("\n#define %s : isfunc %d", yytext, *content == '(' );
-  }
-
-  static void undefine_macro () {
-    printf ("\n#undef %s", id);
-  }
 
   static int env_if ( char * expr ) {
     printf ("\n#if%s", expr);
@@ -195,6 +190,28 @@ STRING  \"([^"\\\n]|{ES})*\"
     printf ("\n#endif");
   }
   
+  typedef struct Macro Macro;
+  static Macro ** macro_lookup ( const char * id );
+  static char *   macro_substitute ( Macro * m, char ** args );
+  typedef struct Macro {
+    char * key, * val, ** args;
+    struct Macro * next;
+    int  tu_scope;                   /* translation unit */
+  } Macro;
+  
+  Macro ** macros;                          /* hashtable */
+  int table_size;
+
+  static void define_macro () {
+    char * content = get_content ();
+    printf ("\n#define %s : isfunc %d", yytext, *content == '(' );
+  }
+
+  static void undefine_macro () {
+    printf ("\n#undef %s", yytext);
+  }
+
+  
   int main ( int argc, char * argv[] ) {
     /*
     .. In case you want to overload gcc macros, run this gcc command via
@@ -202,11 +219,16 @@ STRING  \"([^"\\\n]|{ES})*\"
     .. FILE *fp = popen("gcc -dM -E - < /dev/null", "r");
     .. 
     */
+    out = stdout;
+    table_size = 1 << 8;
+    macros = malloc ( table_size * sizeof (Macro *) );
+    memset (macros, 0, table_size * sizeof (Macro *)); 
     
     if (argc > 1)
       lxr_source (argv[1]);
-    char * file = strdup (( argc == 1 ) ? "<stdin>"  : argv [1]);
-  
+    snprintf (file, sizeof file, "%s",
+      (argc > 1) ? argv [1] : "<stdin>");
+      
     int tkn;
     while ( (tkn = lxr_lex()) ) {
       printf ("\n[%3d] : %s", tkn, yytext);

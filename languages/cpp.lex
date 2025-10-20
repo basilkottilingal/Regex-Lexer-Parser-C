@@ -4,27 +4,44 @@
 .. Note that the C11 preprocessor rules are a superset of C99's rules.
 */
 
-WS      ([ \t]|\\\n)
-SP      ((\\\n)*[ \t]([ \t]|\\\n)*)
-ID      ([_a-zA-Z][_a-zA-Z0-9]*)
-ES      (\\(['"\?\\abfnrtv]|[0-7]{1,3}|x[a-fA-F0-9]+))
-STRING  (\"([^"\\\n]|{ES})*\")
+WS_CPP (([ \t]|\\\n)*)
+SP_CPP ((\\\n)*[ \t]([ \t]|\\\n)*)
+
+O      [0-7]
+D      [0-9]
+NZ     [1-9]
+L      [a-zA-Z_]
+A      [a-zA-Z_0-9]
+H      [a-fA-F0-9]
+ID     ([_a-zA-Z][_a-zA-Z0-9]*)
+HP     (0[xX])
+E      ([Ee][+-]?{D}+)
+P      ([Pp][+-]?{D}+)
+FS     (f|F|l|L)
+IS     (((u|U)(l|L|ll|LL)?)|((l|L|ll|LL)(u|U)?))
+CP     (u|U|L)
+SP     (u8|u|U|L)
+ES     (\\(['"\?\\abfnrtv]|[0-7]{1,3}|x[a-fA-F0-9]+))
+WS     [ \t\v\n\f]
+STRING (\"([^"\\\n]|{ES})*\")
 
 %{
   
   #include <stdio.h>
   #include <stdlib.h>
   #include <string.h>
+
+  #include "tokens.h"
   
   FILE * out;
   static char file [1024];
   static void location  ( );
   static void header    ( int is_std );
-  static int  env_if    ( char * expr );
-  static int  env_elif  ( char * expr );
+  static int  env_if    ( );//char * expr );
+  static int  env_elif  ( );
   static int  env_else  ( );
   static int  env_endif ( );
-  static char * get_content ();
+  static char * get_content ( );
   static void define_macro ( );
   static void undefine_macro ( );
   static void echo      ( char * str );
@@ -40,8 +57,7 @@ STRING  (\"([^"\\\n]|{ES})*\")
 %}
 	 
 %%
-
-"/*"                                                   {
+"/*"      {
             int c;
             while ( (c = lxr_input () ) != EOF ) {
               if ( c != '*' ) continue;
@@ -49,53 +65,88 @@ STRING  (\"([^"\\\n]|{ES})*\")
               if ( c == '/' ) break;
             }
           }
-"//".*                                                 { }
-^[ \t]*#{SP}[0-9]+{SP}{STRING}.*           {
+"//".*    { /* consumes */ }
+^[ \t]*#{SP_CPP}[0-9]+{SP_CPP}{STRING}.*   {
             location ();
           }
-^[ \t]*#{WS}*"include"{WS}*<[a-z_A-Z0-9/.\\+~-]+>.*    {
+^[ \t]*#{WS_CPP}"include"{WS_CPP}<[a-z_A-Z0-9/.\\+~-]+>.*    {
             header (1);
           }
-^[ \t]*#{WS}*"include"{WS}*{STRING}.*                  {
+^[ \t]*#{WS_CPP}"include"{WS_CPP}{STRING}.*   {
             header (0);
           }
-^[ \t]*#{WS}*"if"                                      { 
-            env_if ( get_content ());
+^[ \t]*#{WS_CPP}"if"{SP_CPP}  { 
+            env_if ();
           }
-^[ \t]*#{WS}*"elif"                                    {
-            env_elif ( get_content ());
+^[ \t]*#{WS_CPP}"ifdef"       { 
+            env_if ();
           }
-^[ \t]*#{WS}*"else".*                                  {
-            env_else ( );
+^[ \t]*#{WS_CPP}"ifndef"      { 
+            env_if ();
           }
-^[ \t]*#{WS}*"endif".*                                 {
-            env_endif ( );
+^[ \t]*#{WS_CPP}"elif"        {
+            env_elif ();
           }
-^[ \t]*#{WS}*"define"                                  {
-            get_content ();
+^[ \t]*#{WS_CPP}"else".*      {
+            env_else ();
+          }
+^[ \t]*#{WS_CPP}"endif".*     {
+            env_endif ();
+          }
+^[ \t]*#{WS_CPP}"define"      {
             cpp_error ("unknown # define %s", yytext);
           }
-^[ \t]*#{WS}*"define"{SP}{ID}                          {
+^[ \t]*#{WS_CPP}"define"{SP_CPP}{ID}   {
             /* shouldn't clash with kwywords */
             define_macro ();
           }
-^[ \t]*#{WS}*"undef"{SP}{ID}.*                   {
+^[ \t]*#{WS_CPP}"undef"{SP_CPP}{ID}.*  {
             undefine_macro ();
           }
-^[ \t]*#	                                             {
-            get_content ();
+^[ \t]*#  {
             printf ("\n unknown # directive %s", yytext);
           }
-{ID}                                      { /* see if it's a macro */
+{ID}      { 
+            /* fixme : classify : keywords, id, enum, typedef*/
+            /* see if it's a macro */
             printf ("\nid %s:", yytext);
           }
-{ID}[ \t\n]*\(                            { /* see if it's a macro */
+{ID}{WS}*\(    { 
+            /* see if it's a macro */
             printf ("\nfunc %s:", yytext);
           }
 {STRING}                                             {
           }
-(\\\n)+                                   { /* consume */ }    
-(.|\n)			                              { /* echo */ }
+
+{HP}{H}+{IS}?				                 { return I_CONSTANT; }
+{NZ}{D}*{IS}?				                 { return I_CONSTANT; }
+"0"{O}*{IS}?				                 { return I_CONSTANT; }
+{CP}?"'"([^'\\\n]|{ES})+"'"		       { return I_CONSTANT; }
+
+{D}+{E}{FS}?				                 { return F_CONSTANT; }
+{D}*"."{D}+{E}?{FS}?			           { return F_CONSTANT; }
+{D}+"."{E}?{FS}?			               { return F_CONSTANT; }
+{HP}{H}+{P}{FS}?			               { return F_CONSTANT; }
+{HP}{H}*"."{H}+{P}{FS}?			         { return F_CONSTANT; }
+{HP}{H}+"."{P}{FS}?			             { return F_CONSTANT; }
+
+({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+    { return STRING_LITERAL; }
+
+">>"					                       { return RIGHT_OP; }
+"<<"					                       { return LEFT_OP; }
+"&&"					                       { return AND_OP; }
+"||"					                       { return OR_OP; }
+"<="					                       { return LE_OP; }
+">="					                       { return GE_OP; }
+"=="					                       { return EQ_OP; }
+"!="					                       { return NE_OP; }
+"("|")"|"&"|"!"|"~"|"-"|"+"|"*"|"/"|"%"|"^"|"|"|"?" {
+            /* single character tokens */
+            return yytext [0];
+          }
+
+(\\\n)+                              { /* consume */ }    
+(.|\n)			                         { /* echo */ }
 	 
 %%
      
@@ -159,11 +210,11 @@ STRING  (\"([^"\\\n]|{ES})*\")
   }
  
   enum {
-    NONE    = 0,
-    IF      = 1,
-    ELSE,
-    DEFINE,
-    SUCCESS = 16
+    CPP_NONE    = 0,
+    CPP_IF      = 1,
+    CPP_ELSE,
+    CPP_DEFINE,
+    CPP_SUCCESS = 16
   };
   
   typedef struct Env {
@@ -171,15 +222,15 @@ STRING  (\"([^"\\\n]|{ES})*\")
     struct Env * prev;
   } Env;
   
-  Env   env_root = (Env) { NONE, NULL };
+  Env   env_root = (Env) { CPP_NONE, NULL };
   Env * env_head = & env_root;
 
-  static int env_if ( char * expr ) {
-    printf ("\n#if%s", expr);
+  static int env_if ( ) {
+    printf ("\n#if%s", yytext);
   }
 
-  static int env_elif ( char * expr ) {
-    printf ("\n#elif%s", expr);
+  static int env_elif ( ) {
+    printf ("\n#elif%s", yytext);
   }
 
   static int env_else ( ) {
@@ -201,6 +252,80 @@ STRING  (\"([^"\\\n]|{ES})*\")
   
   Macro ** macros;                          /* hashtable */
   int table_size;
+  
+  static inline 
+  uint32_t hash ( const char * key, uint32_t len ) {
+    	
+    /* 
+    .. Seed is simply set as 0
+    */
+    uint32_t h = 0;
+    uint32_t k;
+  
+    /*
+    .. Dividing into blocks of 4 characters.
+    */
+    for (size_t i = len >> 2; i; --i) {
+      memcpy(&k, key, sizeof(uint32_t));
+      key += sizeof(uint32_t);
+  
+      /*
+      .. Scrambling each block 
+      */
+      k *= 0xcc9e2d51;
+      k = (k << 15) | (k >> 17);
+      k *= 0x1b873593;
+  
+      h ^= k;
+      h = ((h << 13) | (h >> 19)) * 5 + 0xe6546b64;
+    }
+  
+    /*
+    .. tail characters.
+    .. This is for little-endian.  You can find a different version 
+    .. which is endian insensitive.
+    */  
+    k = 0; 
+    switch (len & 3) {
+      case 3: 
+        k ^= key[2] << 16;
+      case 2: 
+        k ^= key[1] << 8;
+      case 1: 
+        k ^= key[0];
+        k *= 0xcc9e2d51;
+        k = (k << 15) | (k >> 17);
+        k *= 0x1b873593;
+        h ^= k;
+    }
+  
+    /* 
+    .. Finalize
+    */
+    h ^= len;
+    h ^= (h >> 16);
+    h *= 0x85ebca6b;
+    h ^= (h >> 13);
+    h *= 0xc2b2ae35;
+    h ^= (h >> 16);
+  
+    /* return murmur hash */
+    return h;
+  }
+  
+  /*
+  .. lookup for a macro in the macro hashtable "table"
+  */
+  static Macro ** lookup (const char * key) {
+    uint32_t h = hash (key, strlen (key));
+    Macro ** p = & table [h % table_size], * m;
+    while ( (m = *p) != NULL ) {
+      if ( !strcmp (m->key, key) )
+        return p;
+      p = & m->next;
+    }
+    return p;
+  }
 
   static void define_macro () {
     char * content = get_content ();

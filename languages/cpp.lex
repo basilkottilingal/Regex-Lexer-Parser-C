@@ -49,10 +49,10 @@ STRING (\"([^"\\\n]|{ES})*\")
   /*
   .. Error reporting
   */
-  #define cpp_error(...)  do {                                         \
-      fprintf(stderr, "file %s line %d :", file, lxr_line_no );        \
-      fprintf(stderr, ##__VA_ARGS__);                                  \
-      exit(-1);                                                        \
+  #define cpp_error(...)  do {                                       \
+      fprintf(stderr, "file %s line %d :", file, lxr_line_no );      \
+      fprintf(stderr, ##__VA_ARGS__);                                \
+      exit(-1);                                                      \
     } while (0)
 %}
 	 
@@ -110,6 +110,7 @@ STRING (\"([^"\\\n]|{ES})*\")
             /* fixme : classify : keywords, id, enum, typedef*/
             /* see if it's a macro */
             printf ("\nid %s:", yytext);
+            return IDENTIFIER; 
           }
 {ID}{WS}*\(    { 
             /* see if it's a macro */
@@ -130,7 +131,7 @@ STRING (\"([^"\\\n]|{ES})*\")
 {HP}{H}*"."{H}+{P}{FS}?			         { return F_CONSTANT; }
 {HP}{H}+"."{P}{FS}?			             { return F_CONSTANT; }
 
-({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+    { return STRING_LITERAL; }
+  /* ({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+   { return STRING_LITERAL; }*/
 
 ">>"					                       { return RIGHT_OP; }
 "<<"					                       { return LEFT_OP; }
@@ -161,14 +162,6 @@ STRING (\"([^"\\\n]|{ES})*\")
     return & yytext [len];
   }
   
-  static void file_macro () {
-  }
-  
-  static void line_macro () {
-  }
-  
-  static void time_macro () {
-  }
   
   /*
   .. Note __func__ is not a macro like __FILE__, __LINE__ or __TIME__
@@ -209,36 +202,86 @@ STRING (\"([^"\\\n]|{ES})*\")
     printf ("\nuser defined header %s", yytext);
   }
  
-  enum {
-    CPP_NONE    = 0,
-    CPP_IF      = 1,
-    CPP_ELSE,
-    CPP_DEFINE,
-    CPP_SUCCESS = 16
-  };
-  
-  typedef struct Env {
-    int status;
-    struct Env * prev;
-  } Env;
-  
-  Env   env_root = (Env) { CPP_NONE, NULL };
-  Env * env_head = & env_root;
+
+  #define CPP_NONE               0
+  #define CPP_IF                 1
+  #define CPP_ELSE               2
+  #define CPP_ENV_DEPTHMAX       63
+  static int env_status [CPP_ENV_DEPTHMAX + 1] = {CPP_NONE};
+  static int env_depth = 0;
+  #define CPP_PARSE_ON           4
+  #define CPP_PARSE_DONE         8
+  #define CPP_PARSE_NOTYET       16
+  #define CPP_EXPR_CONSUME       32
+  #define CPP_EXPR_EVALUATE      64
+  #define CPP_EXPR_VALUE()        1
+  #define CPP_EXPR_COMPLETE(val) do {                        \
+      int * s = & env_status [env_depth];                    \
+      if (!( (*s) & EXPR_EVALUATE) && !(val)) break;         \
+      if ( CPP_EXPR_VALUE () ) {                             \
+        (*s) |= CPP_PARSE_ON;                                \
+        (*s) &= ~ (CPP_PARSE_NOTYET);                        \
+        (*s)                                                 \ 
+      }                                                      \
+      (*s) &= ~ (CPP_EXPR_EVALUATE|CPP_EXPR_CONSUME);        \
+    } while (0)                                              \
+
+  static int expression_start () {
+    int * status = & env_status [env_depth];
+    if (*status & CPP_EXPR_EVALUATE) 
+  }
 
   static int env_if ( ) {
+    if (env_depth == CPP_ENV_DEPTHMAX) {
+      cpp_error ("reached max depth of #if breanching");
+      exit (-1);
+    }
+    env_status [++env_depth] = CPP_EXPR_EVALUATE; 
     printf ("\n#if%s", yytext);
   }
 
   static int env_elif ( ) {
-    printf ("\n#elif%s", yytext);
+    int * status = & env_status [env_depth];
+    if ( ! (*status & CPP_IF) ) {
+      cpp_error ("#elif without #if");
+      exit (-1);
+    }
+    switch ( *status & 
+      (CPP_PARSE_ON|CPP_PARSE_DONE|CPP_PARSE_NOTYET) ) 
+    {
+      case CPP_PARSE_ON : 
+        *status &= ~CPP_PARSE_ON;
+        *status |=  CPP_PARSE_DONE;
+      case CPP_PARSE_DONE : 
+        *status |= CPP_EXPR_CONSUME;
+        break;
+      case CPP_PARSE_NOTYET :
+        *status |= CPP_EXPR_EVALUATE;
+        break;
+      default :
+        cpp_error ("cpp - internal error : invalid parse status");
+        break;
+    }
+    return 0;
   }
 
   static int env_else ( ) {
-    printf ("\n#else");
+    int * status = & env_status [env_depth];
+    if ( (*status) & CPP_IF ) {
+      cpp_error ("#else without #if");
+      exit (-1);
+    }
+    if ( *status & CPP_PARSE_NOTYET )
+      *status |= (CPP_PARSE_ON|CPP_ELSE);
+    *status &= ~CPP_IF;
   }
 
   static int env_endif ( ) {
-    printf ("\n#endif");
+    if ( (*status) & (CPP_IF|CPP_ELSE) ) {
+      cpp_error ("#endif without #if");
+      exit (-1);
+    }
+    --env_depth;
   }
   
   typedef struct Macro Macro;
@@ -339,8 +382,8 @@ STRING (\"([^"\\\n]|{ES})*\")
   
   int main ( int argc, char * argv[] ) {
     /*
-    .. In case you want to overload gcc macros, run this gcc command via
-    .. posix popen()
+    .. In case you want to overload gcc macros, run this gcc command
+    .. via posix popen()
     .. FILE *fp = popen("gcc -dM -E - < /dev/null", "r");
     .. 
     */

@@ -2,10 +2,9 @@
 .. c preprocessor tokenizer. Based on ISO C11 ( ISO/IEC 9899:2011 )
 .. https://www.open-std.org/jtc1/sc22/wg14/www/docs/n1570.pdf
 .. Note that the C11 preprocessor rules are a superset of C99's rules.
+..
+.. Important, assumes \\\n and comments are removed
 */
-
-WS_CPP (([ \t]|\\\n)*)
-SP_CPP ((\\\n)*[ \t]([ \t]|\\\n)*)
 
 O      [0-7]
 D      [0-9]
@@ -22,6 +21,7 @@ IS     (((u|U)(l|L|ll|LL)?)|((l|L|ll|LL)(u|U)?))
 CP     (u|U|L)
 SP     (u8|u|U|L)
 ES     (\\(['"\?\\abfnrtv]|[0-7]{1,3}|x[a-fA-F0-9]+))
+WS1    [ \t]
 WS     [ \t\v\n\f]
 STRING (\"([^"\\\n]|{ES})*\")
 
@@ -57,53 +57,45 @@ STRING (\"([^"\\\n]|{ES})*\")
 %}
 	 
 %%
-"/*"      {
-            int c;
-            while ( (c = lxr_input () ) != EOF ) {
-              if ( c != '*' ) continue;
-              while ( (c = lxr_input ()) == '*' ) {}
-              if ( c == '/' ) break;
-            }
+"/*"|("//".*)|(\\\n)|"%:" { 
+            cpp_error ("cpp internal error : these tokens"
+              "are expected to be removed apriori");
           }
-"//".*    { /* consumes */ }
-^[ \t]*#{SP_CPP}[0-9]+{SP_CPP}{STRING}.*   {
+^{WS1}*#{WS1}+[0-9]+{WS1}+{STRING}.*   {
             location ();
           }
-^[ \t]*#{WS_CPP}"include"{WS_CPP}<[a-z_A-Z0-9/.\\+~-]+>.*    {
+^{WS1}*#{WS1}*"include"{WS1}*<[a-z_A-Z0-9/.\\+~-]+>.*    {
             header (1);
           }
-^[ \t]*#{WS_CPP}"include"{WS_CPP}{STRING}.*   {
+^{WS1}*#{WS1}*"include"{WS1}*{STRING}.*   {
             header (0);
           }
-^[ \t]*#{WS_CPP}"if"{SP_CPP}  { 
+^{WS1}*#{WS1}*"if"{WS1}+       { 
             env_if ();
           }
-^[ \t]*#{WS_CPP}"ifdef"       { 
+^{WS1}*#{WS1}*"ifdef"{WS1}+    { 
+            env_if (); 
+          }
+^{WS1}*#{WS1}*"ifndef"{WS1}+   { 
             env_if ();
           }
-^[ \t]*#{WS_CPP}"ifndef"      { 
-            env_if ();
-          }
-^[ \t]*#{WS_CPP}"elif"        {
+^{WS1}*#{WS1}*"elif"{WS1}+     {
             env_elif ();
           }
-^[ \t]*#{WS_CPP}"else".*      {
+^{WS1}*#{WS1}*"else".*         {
             env_else ();
           }
-^[ \t]*#{WS_CPP}"endif".*     {
+^{WS1}*#{WS1}*"endif".*       {
             env_endif ();
           }
-^[ \t]*#{WS_CPP}"define"      {
-            cpp_error ("unknown # define %s", yytext);
-          }
-^[ \t]*#{WS_CPP}"define"{SP_CPP}{ID}   {
+^{WS1}*#{WS1}*"define"{WS1}+{ID}   {
             /* shouldn't clash with kwywords */
             define_macro ();
           }
-^[ \t]*#{WS_CPP}"undef"{SP_CPP}{ID}.*  {
+^{WS1}*#{WS1}*"undef"{WS1}+{ID}.*  {
             undefine_macro ();
           }
-^[ \t]*#  {
+^{WS1}*#  {
             printf ("\n unknown # directive %s", yytext);
           }
 {ID}      { 
@@ -111,10 +103,6 @@ STRING (\"([^"\\\n]|{ES})*\")
             /* see if it's a macro */
             printf ("\nid %s:", yytext);
             return IDENTIFIER; 
-          }
-{ID}{WS}*\(    { 
-            /* see if it's a macro */
-            printf ("\nfunc %s:", yytext);
           }
 {STRING}                                             {
           }
@@ -141,13 +129,8 @@ STRING (\"([^"\\\n]|{ES})*\")
 ">="					                       { return GE_OP; }
 "=="					                       { return EQ_OP; }
 "!="					                       { return NE_OP; }
-"("|")"|"&"|"!"|"~"|"-"|"+"|"*"|"/"|"%"|"^"|"|"|"?" {
-            /* single character tokens */
-            return yytext [0];
-          }
 
-(\\\n)+                              { /* consume */ }    
-(.|\n)			                         { /* echo */ }
+(.|\n)                               { return yytext[0]; }
 	 
 %%
      
@@ -215,20 +198,26 @@ STRING (\"([^"\\\n]|{ES})*\")
   #define CPP_EXPR_CONSUME       32
   #define CPP_EXPR_EVALUATE      64
   #define CPP_EXPR_VALUE()        1
-  #define CPP_EXPR_COMPLETE(val) do {                        \
-      int * s = & env_status [env_depth];                    \
-      if (!( (*s) & EXPR_EVALUATE) && !(val)) break;         \
-      if ( CPP_EXPR_VALUE () ) {                             \
-        (*s) |= CPP_PARSE_ON;                                \
-        (*s) &= ~ (CPP_PARSE_NOTYET);                        \
-        (*s)                                                 \ 
-      }                                                      \
-      (*s) &= ~ (CPP_EXPR_EVALUATE|CPP_EXPR_CONSUME);        \
-    } while (0)                                              \
 
-  static int expression_start () {
+  static int expression_start (int is_evaluate) {
     int * status = & env_status [env_depth];
-    if (*status & CPP_EXPR_EVALUATE) 
+    *status |= 
+      ( is_evaluate ? CPP_EXPR_EVALUATE : CPP_EXPR_CONSUME );
+    return 0;
+  }
+  
+  static int expression_end () {
+    int * status = & env_status [env_depth];
+    if (*status & CPP_EXPR_CONSUME) {
+      *status &= ~CPP_EXPR_CONSUME;
+      return 0;
+    }
+    *status &= ~CPP_EXPR_PARSE;
+    if (CPP_EXPR_VALUE ()) {
+      *status &= ~CPP_PARSE_NOTYET;
+      *status |= CPP_PARSE_ON;
+    }
+    return 0;
   }
 
   static int env_if ( ) {
@@ -238,6 +227,7 @@ STRING (\"([^"\\\n]|{ES})*\")
     }
     env_status [++env_depth] = CPP_EXPR_EVALUATE; 
     printf ("\n#if%s", yytext);
+    return 0;
   }
 
   static int env_elif ( ) {
@@ -274,6 +264,7 @@ STRING (\"([^"\\\n]|{ES})*\")
     if ( *status & CPP_PARSE_NOTYET )
       *status |= (CPP_PARSE_ON|CPP_ELSE);
     *status &= ~CPP_IF;
+    return 0;
   }
 
   static int env_endif ( ) {
@@ -282,6 +273,7 @@ STRING (\"([^"\\\n]|{ES})*\")
       exit (-1);
     }
     --env_depth;
+    return 0;
   }
   
   typedef struct Macro Macro;

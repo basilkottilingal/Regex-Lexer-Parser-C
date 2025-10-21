@@ -30,6 +30,7 @@ STRING (\"([^"\\\n]|{ES})*\")
   #include <stdio.h>
   #include <stdlib.h>
   #include <string.h>
+  #include <stdint.h>
 
   #include "tokens.h"
   
@@ -54,20 +55,45 @@ STRING (\"([^"\\\n]|{ES})*\")
       fprintf(stderr, ##__VA_ARGS__);                                \
       exit(-1);                                                      \
     } while (0)
+  #define cpp_warning(...)  do {                                     \
+      fprintf(stderr, "file %s line %d :", file, lxr_line_no );      \
+      fprintf(stderr, ##__VA_ARGS__);                                \
+    } while (0)
 %}
 	 
 %%
-"/*"|("//".*)|(\\\n)|"%:" { 
-            cpp_error ("cpp internal error : these tokens"
-              "are expected to be removed apriori");
+(\\\n)    { 
+            cpp_error ("cpp internal error : \\\\\\n"
+              "expected to be removed before preprocessing");
           }
-^{WS1}*#{WS1}+[0-9]+{WS1}+{STRING}.*   {
+"%:"      { 
+            cpp_error ("cpp internal error : %s"
+              "expected to be replaced by '#'", yytext);
+          }
+"//".*    {
+            cpp_warning ("cpp internal error : inline"
+              "comment is expected to be removed apriori");
+          }
+"/*"      {
+            int c;
+            while ( (c = lxr_input () ) != EOF ) {
+              if ( c != '*' ) continue;
+              while ( ( c = lxr_input () ) == '*' ) {}
+              if ( c == '/' ) break;
+            }
+            cpp_warning ("cpp internal error : inline"
+              "comment is expected to be removed apriori");
+          }
+^{WS1}*#({WS1}*"line")?{WS1}+[0-9]+{WS1}+{STRING}.*   {
+            /* fixme : warn any trailing characters */
             location ();
           }
 ^{WS1}*#{WS1}*"include"{WS1}*<[a-z_A-Z0-9/.\\+~-]+>.*    {
+            /* fixme : warn any trailing characters */
             header (1);
           }
 ^{WS1}*#{WS1}*"include"{WS1}*{STRING}.*   {
+            /* fixme : warn any trailing characters */
             header (0);
           }
 ^{WS1}*#{WS1}*"if"{WS1}+       { 
@@ -83,9 +109,11 @@ STRING (\"([^"\\\n]|{ES})*\")
             env_elif ();
           }
 ^{WS1}*#{WS1}*"else".*         {
+            /* fixme : warn any trailing characters */
             env_else ();
           }
 ^{WS1}*#{WS1}*"endif".*       {
+            /* fixme : warn any trailing characters */
             env_endif ();
           }
 ^{WS1}*#{WS1}*"define"{WS1}+{ID}   {
@@ -93,6 +121,7 @@ STRING (\"([^"\\\n]|{ES})*\")
             define_macro ();
           }
 ^{WS1}*#{WS1}*"undef"{WS1}+{ID}.*  {
+            /* fixme : warn any trailing characters */
             undefine_macro ();
           }
 ^{WS1}*#  {
@@ -105,6 +134,10 @@ STRING (\"([^"\\\n]|{ES})*\")
             return IDENTIFIER; 
           }
 {STRING}                                             {
+  
+            /* ({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+   { return STRING_LITERAL; }*/
+            /* fixme : may concatenate any consecutive string*/
+            return STRING_LITERAL;
           }
 
 {HP}{H}+{IS}?				                 { return I_CONSTANT; }
@@ -118,8 +151,6 @@ STRING (\"([^"\\\n]|{ES})*\")
 {HP}{H}+{P}{FS}?			               { return F_CONSTANT; }
 {HP}{H}*"."{H}+{P}{FS}?			         { return F_CONSTANT; }
 {HP}{H}+"."{P}{FS}?			             { return F_CONSTANT; }
-
-  /* ({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+   { return STRING_LITERAL; }*/
 
 ">>"					                       { return RIGHT_OP; }
 "<<"					                       { return LEFT_OP; }
@@ -195,27 +226,27 @@ STRING (\"([^"\\\n]|{ES})*\")
   #define CPP_PARSE_ON           4
   #define CPP_PARSE_DONE         8
   #define CPP_PARSE_NOTYET       16
-  #define CPP_EXPR_CONSUME       32
   #define CPP_EXPR_EVALUATE      64
   #define CPP_EXPR_VALUE()        1
 
+  /*
+  .. while starting/ending to read expr after #if
+  */
   static int expression_start (int is_evaluate) {
     int * status = & env_status [env_depth];
-    *status |= 
-      ( is_evaluate ? CPP_EXPR_EVALUATE : CPP_EXPR_CONSUME );
+    if (is_evaluate)
+      *status |= CPP_EXPR_EVALUATE;
     return 0;
   }
   
   static int expression_end () {
     int * status = & env_status [env_depth];
-    if (*status & CPP_EXPR_CONSUME) {
-      *status &= ~CPP_EXPR_CONSUME;
-      return 0;
-    }
-    *status &= ~CPP_EXPR_PARSE;
-    if (CPP_EXPR_VALUE ()) {
-      *status &= ~CPP_PARSE_NOTYET;
-      *status |= CPP_PARSE_ON;
+    if ( *status & CPP_EXPR_EVALUATE ){
+      *status &= ~CPP_EXPR_EVALUATE;
+      if (CPP_EXPR_VALUE ()) {
+        *status |= CPP_PARSE_ON;
+        *status &= ~CPP_PARSE_NOTYET;
+      }
     }
     return 0;
   }
@@ -233,17 +264,16 @@ STRING (\"([^"\\\n]|{ES})*\")
   static int env_elif ( ) {
     int * status = & env_status [env_depth];
     if ( ! (*status & CPP_IF) ) {
-      cpp_error ("#elif without #if");
+      cpp_warning ("#elif without #if");
       exit (-1);
     }
-    switch ( *status & 
-      (CPP_PARSE_ON|CPP_PARSE_DONE|CPP_PARSE_NOTYET) ) 
+    switch ( *status & (CPP_PARSE_ON|CPP_PARSE_NOTYET|CPP_PARSE_DONE) ) 
     {
+      case CPP_PARSE_DONE :
+        break; 
       case CPP_PARSE_ON : 
         *status &= ~CPP_PARSE_ON;
         *status |=  CPP_PARSE_DONE;
-      case CPP_PARSE_DONE : 
-        *status |= CPP_EXPR_CONSUME;
         break;
       case CPP_PARSE_NOTYET :
         *status |= CPP_EXPR_EVALUATE;
@@ -258,16 +288,17 @@ STRING (\"([^"\\\n]|{ES})*\")
   static int env_else ( ) {
     int * status = & env_status [env_depth];
     if ( (*status) & CPP_IF ) {
-      cpp_error ("#else without #if");
-      exit (-1);
+      cpp_warning ("#else without #if");
     }
+    *status |= CPP_ELSE;
     if ( *status & CPP_PARSE_NOTYET )
-      *status |= (CPP_PARSE_ON|CPP_ELSE);
+      *status |= CPP_PARSE_ON;
     *status &= ~CPP_IF;
     return 0;
   }
 
   static int env_endif ( ) {
+    int * status = & env_status [env_depth];
     if ( (*status) & (CPP_IF|CPP_ELSE) ) {
       cpp_error ("#endif without #if");
       exit (-1);
@@ -353,7 +384,7 @@ STRING (\"([^"\\\n]|{ES})*\")
   */
   static Macro ** lookup (const char * key) {
     uint32_t h = hash (key, strlen (key));
-    Macro ** p = & table [h % table_size], * m;
+    Macro ** p = & macros [h % table_size], * m;
     while ( (m = *p) != NULL ) {
       if ( !strcmp (m->key, key) )
         return p;

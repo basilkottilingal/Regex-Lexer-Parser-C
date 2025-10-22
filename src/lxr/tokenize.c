@@ -256,7 +256,7 @@ static void lxr_buffer_update () {
     while ( size <= non_parsed )
       size *= 2;
 
-    s = lxr_alloc (sizeof (size));
+    s = lxr_alloc (sizeof (lxr_buff_stack));
     if ( s == NULL ) {
       fprintf (stderr, "lxr_alloc failed");
       exit (-1);

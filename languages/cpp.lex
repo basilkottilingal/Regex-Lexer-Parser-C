@@ -38,7 +38,7 @@ STRING (\"([^"\\\n]|{ES})*\")
   static char file [1024];
   static void location  ( );
   static void header    ( int is_std );
-  static int  env_if    ( );//char * expr );
+  static int  env_if    ( );
   static int  env_elif  ( );
   static int  env_else  ( );
   static int  env_endif ( );
@@ -63,16 +63,16 @@ STRING (\"([^"\\\n]|{ES})*\")
 	 
 %%
 (\\\n)    { 
-            cpp_error ("cpp internal error : \\\\\\n"
-              "expected to be removed before preprocessing");
+            /*cpp_warning ("cpp internal error : \\\\\\n"
+              "expected to be removed before preprocessing");*/
           }
 "%:"      { 
-            cpp_error ("cpp internal error : %s"
-              "expected to be replaced by '#'", yytext);
+            /*cpp_error ("cpp internal error : %s"
+              "expected to be replaced by '#'", yytext); */
           }
 "//".*    {
-            cpp_warning ("cpp internal error : inline"
-              "comment is expected to be removed apriori");
+            /*cpp_warning ("cpp internal error : inline"
+              "comment is expected to be removed apriori"); */
           }
 "/*"      {
             int c;
@@ -81,8 +81,8 @@ STRING (\"([^"\\\n]|{ES})*\")
               while ( ( c = lxr_input () ) == '*' ) {}
               if ( c == '/' ) break;
             }
-            cpp_warning ("cpp internal error : inline"
-              "comment is expected to be removed apriori");
+            /*cpp_warning ("cpp internal error : inline"
+              "comment is expected to be removed apriori"); */
           }
 ^{WS1}*#({WS1}*"line")?{WS1}+[0-9]+{WS1}+{STRING}.*   {
             /* fixme : warn any trailing characters */
@@ -125,18 +125,17 @@ STRING (\"([^"\\\n]|{ES})*\")
             undefine_macro ();
           }
 ^{WS1}*#  {
-            printf ("\n unknown # directive %s", yytext);
+            cpp_error ("\n unknown # directive %s", yytext);
           }
 {ID}      { 
             /* fixme : classify : keywords, id, enum, typedef*/
             /* see if it's a macro */
-            printf ("\nid %s:", yytext);
             return IDENTIFIER; 
           }
-{STRING}                                             {
-  
-            /* ({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+   { return STRING_LITERAL; }*/
-            /* fixme : may concatenate any consecutive string*/
+{STRING}  {
+            /* ({SP}?\"([^"\\\n]|{ES})*\"{WS}*)+   { 
+                return STRING_LITERAL; }
+              fixme : may concatenate any consecutive string*/
             return STRING_LITERAL;
           }
 
@@ -193,17 +192,13 @@ STRING (\"([^"\\\n]|{ES})*\")
   
   static
   void location () {
-    char * s = strchr (yytext, '#') + 1;
-    lxr_line_no = atoi (s) - 1;
-    s = strchr (s, '"') + 1;
+    char * s = strchr (yytext, '"'); *s++ = '\0';
+    char * _s = strchr (yytext, 'e');
+    lxr_line_no = atoi (_s ? _s+1 : strchr(yytext, '#') + 1) - 1;
     snprintf (file, sizeof file, "%s", s);
     s = strchr (file, '"');
-    if (s)
-      *s = '\0';
-    #if 0
-    else
-      cpp_error ("very long source name");
-    #endif
+    if (s) *s = '\0';
+    else cpp_warning ("very long source name");
     printf ("\n loc # %d \"%s\"", lxr_line_no, file);
   }
   
@@ -227,37 +222,14 @@ STRING (\"([^"\\\n]|{ES})*\")
   #define CPP_PARSE_DONE         8
   #define CPP_PARSE_NOTYET       16
   #define CPP_EXPR_EVALUATE      64
-  #define CPP_EXPR_VALUE()        1
 
-  /*
-  .. while starting/ending to read expr after #if
-  */
-  static int expression_start (int is_evaluate) {
-    int * status = & env_status [env_depth];
-    if (is_evaluate)
-      *status |= CPP_EXPR_EVALUATE;
-    return 0;
-  }
-  
-  static int expression_end () {
-    int * status = & env_status [env_depth];
-    if ( *status & CPP_EXPR_EVALUATE ){
-      *status &= ~CPP_EXPR_EVALUATE;
-      if (CPP_EXPR_VALUE ()) {
-        *status |= CPP_PARSE_ON;
-        *status &= ~CPP_PARSE_NOTYET;
-      }
-    }
-    return 0;
-  }
 
   static int env_if ( ) {
     if (env_depth == CPP_ENV_DEPTHMAX) {
       cpp_error ("reached max depth of #if breanching");
       exit (-1);
     }
-    env_status [++env_depth] = CPP_EXPR_EVALUATE; 
-    printf ("\n#if%s", yytext);
+    env_status [++env_depth] = CPP_EXPR_EVALUATE|CPP_IF; 
     return 0;
   }
 
@@ -267,7 +239,7 @@ STRING (\"([^"\\\n]|{ES})*\")
       cpp_warning ("#elif without #if");
       exit (-1);
     }
-    switch ( *status & (CPP_PARSE_ON|CPP_PARSE_NOTYET|CPP_PARSE_DONE) ) 
+    switch (*status & (CPP_PARSE_ON|CPP_PARSE_NOTYET|CPP_PARSE_DONE))
     {
       case CPP_PARSE_DONE :
         break; 
@@ -287,19 +259,20 @@ STRING (\"([^"\\\n]|{ES})*\")
 
   static int env_else ( ) {
     int * status = & env_status [env_depth];
-    if ( (*status) & CPP_IF ) {
+    if ( !((*status) & CPP_IF) ) {
       cpp_warning ("#else without #if");
     }
-    *status |= CPP_ELSE;
-    if ( *status & CPP_PARSE_NOTYET )
-      *status |= CPP_PARSE_ON;
     *status &= ~CPP_IF;
+    *status |=  CPP_ELSE;
+    if ( *status & CPP_PARSE_NOTYET ) {
+      *status |= CPP_PARSE_ON;
+    }
     return 0;
   }
 
   static int env_endif ( ) {
     int * status = & env_status [env_depth];
-    if ( (*status) & (CPP_IF|CPP_ELSE) ) {
+    if ( !((*status) & (CPP_IF|CPP_ELSE)) ) {
       cpp_error ("#endif without #if");
       exit (-1);
     }
@@ -402,6 +375,27 @@ STRING (\"([^"\\\n]|{ES})*\")
     printf ("\n#undef %s", yytext);
   }
 
+  typedef struct Token {
+    char * start, * end;
+    int token;
+  } Token;
+
+  int expr_eval ( Token * expr, int n ) {
+    char holdchar, * start, * end;
+    printf ("\neval : ");
+    while (n--) {
+      start = expr->start;
+      end = expr->end;
+      holdchar = *end;
+      *end = '\0';
+      printf ("%s ", start);
+      *end = holdchar;
+      ++expr;
+    }
+    printf ("\n");
+    /* fixme : implement top-to-bottom LL parser to evaluate expr */
+    return 1;
+  }
   
   int main ( int argc, char * argv[] ) {
     /*
@@ -420,8 +414,41 @@ STRING (\"([^"\\\n]|{ES})*\")
     snprintf (file, sizeof file, "%s",
       (argc > 1) ? argv [1] : "<stdin>");
       
-    int tkn;
+    int tkn, nexpr = 128, iexpr = 0;
+    Token * expr = malloc (nexpr * sizeof (Token));
     while ( (tkn = lxr_lex()) ) {
-      printf ("\n[%3d] : %s", tkn, yytext);
+      int * status = & env_status [env_depth];
+      switch ( *status & (CPP_PARSE_ON|CPP_EXPR_EVALUATE) ) {
+        case 0 :
+          break;
+        case CPP_PARSE_ON :
+          printf ("%s", yytext);
+          break;
+        case CPP_EXPR_EVALUATE :
+          if (tkn == '\n') {
+            *status &= ~CPP_EXPR_EVALUATE;
+            if ( expr_eval (expr, iexpr) ) {
+              *status |=  CPP_PARSE_ON;
+              *status &= ~CPP_PARSE_NOTYET;
+            }
+            iexpr = 0;
+            break;
+          }
+          if (tkn == ' ' || tkn == '\t')
+            break;
+          if ( iexpr == nexpr )
+            expr = realloc (expr, (nexpr *= 2)*sizeof (Token));
+          expr[iexpr++] =    /* stack tokens to evaluate expr later */
+            (Token) {
+              .start = yytext,
+              .end   = yytext + yyleng,
+              .token = tkn
+            };
+          break;
+        default :
+          cpp_error ("cpp internal error : unknown parse status"); 
+      }
     }
+    //free (expr);
+    free (macros);
   }

@@ -203,7 +203,8 @@ int lxr_lex () {
 }
 
 /*
-.. input/unput not yet tested
+.. return next (unsigned) byte from input stream. Return value is in
+.. [0x00, 0xFF]. Exception EOF
 */
 int lxr_input () {
 
@@ -222,6 +223,12 @@ int lxr_input () {
    ( ((size_t) yyleng == idx) ? lxr_hold_char : yytext [idx] );
 }
 
+/*
+.. undo the lxr_input(). return previous byte.
+.. Note : there is a limit on how many unput() can be called. You
+.. cannot unput beyond the "yytext" pointer, i.e, you cannot go to
+.. the last accepted token.
+*/ 
 int lxr_unput () {
   if ( (size_t) (lxr_bptr - lxr_start) > 0) {
     size_t idx = (--lxr_bptr) - lxr_start;

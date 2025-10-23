@@ -340,9 +340,12 @@ int rows_compression ( Row ** rows, int *** tables,
   tsize [0][0] = tsize [0][1] = offset + n;
   tables [0][0] = check;  tables[0][1] = next;
 
-  for (int i=0; i<tsize [0][0]; ++i)
-    if (check [i] == EMPTY)
+  for (int i=0; i<tsize [0][0]; ++i) {
+    if (check [i] == EMPTY) 
       check [i] = DEADSTATE;
+    if (next [i] == EMPTY) 
+      next [i] = DEADSTATE;
+  }
   for (int i=0; i<tsize [0][4]; ++i)
     if (def [i] == EMPTY)
       def [i] = DEADSTATE;

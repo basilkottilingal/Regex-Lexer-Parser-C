@@ -40,9 +40,8 @@ STRING (\"([^"\\\n]|{ES})*\")
   #define CPP_PARSE_ON           4
   #define CPP_PARSE_DONE         8
   #define CPP_PARSE_NOTYET       16
-  #define CPP_EXPR               64
-  #define CPP_DEFINE             128
-  #define CPP_PARSE              (CPP_PARSE_ON|CPP_EXPR|CPP_DEFINE)
+  #define CPP_EXPR               32
+  #define CPP_PARSE              (CPP_PARSE_ON|CPP_EXPR)
   #define CPP_ENV_DEPTHMAX       63
   #define CPP_ISNEGLECT                                              \
     if ( !(*status & CPP_PARSE) )                                    \
@@ -71,19 +70,22 @@ STRING (\"([^"\\\n]|{ES})*\")
   .. Error reporting
   */
   #define cpp_error(...)  do {                                       \
-      fprintf(stderr, "\nerror : file %s line %d :",                 \
+      fprintf(stderr, "\n**** error : file %s line %d :\n**** ",     \
         file, lxr_line_no );                                         \
       fprintf(stderr, ##__VA_ARGS__);                                \
+      fprintf(stderr, "\n");                                         \
     } while (0)
   #define cpp_warning(...)  do {                                     \
-      fprintf(stderr, "\nwarning : file %s line %d :",               \
+      fprintf(stderr, "\n**** warning : file %s line %d :\n**** ",   \
         file, lxr_line_no );                                         \
       fprintf(stderr, ##__VA_ARGS__);                                \
+      fprintf(stderr, "\n");                                         \
     } while (0)
   #define cpp_fatal(...)  do {                                       \
-      fprintf(stderr, "\nfatal error : file %s line %d :",           \
-        file, lxr_line_no );                                         \
+      fprintf(stderr, "\n**** fatal error : file %s line %d :\n**** "\
+        , file, lxr_line_no );                                       \
       fprintf(stderr, ##__VA_ARGS__);                                \
+      fprintf(stderr, "\n");                                         \
       exit(-1);                                                      \
     } while (0)
 %}
@@ -150,9 +152,12 @@ STRING (\"([^"\\\n]|{ES})*\")
             undefine_macro ();
             warn_trailing ();
           }
-^{WS1}*#{WS1}*"error".*  {
+^{WS1}*#{WS1}*"error"  {
             /* replace any macros */
             cpp_fatal ("%s", yytext);
+          }
+^{WS1}*#{WS1}*[\n]  {
+            /* Null directive. Just consume */
           }
 ^{WS1}*#  {
             cpp_error ("\n not an ISO C99 # directive %s", yytext);
@@ -198,16 +203,40 @@ static void verbose_level (int l) {
 }
    
 static char * get_content () {
-  int c, p = '\0', len = yyleng;
-  while ( (c = lxr_input () ) != EOF ) {
-    if ( c == '\n' && p != '\\') break;
-    p = c;
+  /*
+  .. fixme : optimize by removing ///n and comments
+  */
+  int c, p = '\0';
+  while ( (c = lxr_input ()) != '\0' ) {
+    if ( c == '/' && p == '/' ) {
+      while ( (c = lxr_input ()) != '\0' && c != '\n' ) {
+      }
+      break;
+    }
+    if ( c == '\n' ) {
+      if ( p != '\\' ) break;
+    }
+    else if ( c == '*' && p == '/' ) {
+      while ( (c = lxr_input ()) != EOF ) {
+        if ( c != '*' ) continue;
+        while ( (c = lxr_input ()) == '*' ) {
+        }
+        if ( c == '/' ) break;
+      }
+      if ( c == EOF )
+        cpp_warning ("non-terminated /*");
+    }
+    p = c; 
   }
+  int len = yyleng;
   lxr_token ();
   return & yytext [len];
 }
 
 static void warn_trailing () {
+  /*
+  .. optimize : by removing \\\n, comments apriori
+  */
   int err = 0, c, p = '\0';
   while ( (c = lxr_input ()) != '\0' ) {
     if ( c == '/' && p == '/' ) {
@@ -236,7 +265,7 @@ static void warn_trailing () {
     p = c; 
   }
   if (err)
-    cpp_warning ("\nbad trailing characters after %s\n", yytext);
+    cpp_warning ("bad trailing characters after %s", yytext);
 }
 
 static
@@ -264,10 +293,10 @@ void location () {
 static
 void header (int is_std) {
   if (is_std) {
-    printf ("\n std header %s", yytext);
+    printf ("\n****std header %s", yytext);
     return; 
   }
-  printf ("\nuser defined header %s", yytext);
+  printf ("\n****user defined header %s", yytext);
 }
 
 static
@@ -277,7 +306,7 @@ static int env_depth = 0;                     /* fixme : may resize */
 static int env_if ( ) {
  printf ("New if");
   if (env_depth == CPP_ENV_DEPTHMAX)
-    cpp_fatal ("reached max depth of #if breanching");
+    cpp_fatal ("reached max depth of #if branching");
   ++env_depth;
   *++status = CPP_EXPR|CPP_IF;
   return 0;
@@ -440,7 +469,6 @@ static Macro ** lookup (const char * key) {
 
 static void define_macro () {
   char * id = strchr (yytext, 'n') + 2;
-  *status |= CPP_DEFINE;
   while ( *id == ' ' || *id == '\t' ) {
     id++;
   }
@@ -450,14 +478,28 @@ static void define_macro () {
     /*fixme : clean */
   }
   else {
-    printf ("\nnew macro %s", id);
     m = *ptr = macro_allocate ();
     m->key = strdup (id);
   }
+  char * def = get_content ();
+  printf ("\n**** new macro %s: %s", m->key, def);
+  /*
+  .. fixme : (in loop) substitute macro substitions
+  */
 }
 
-static int env_ifdef (int _01_ ) {
-  
+static int env_ifdef (int _01_) {
+  char * id = strchr (yytext, 'e') + 2;
+  while ( *id == ' ' || *id == '\t' ) {
+    id++;
+  }
+  if ((int) (lookup (id) != NULL) == _01_)
+    return 1;
+  if (env_depth == CPP_ENV_DEPTHMAX)
+    cpp_fatal ("reached max depth of #if branching");
+  ++env_depth;
+  *++status = CPP_EXPR|CPP_IF;
+  return 0;
 }
 
 static void undefine_macro () {
@@ -528,24 +570,23 @@ int main ( int argc, char * argv[] ) {
       case CPP_PARSE_ON :
         printf ("%s", yytext);
         break;
-      case CPP_DEFINE|CPP_PARSE_ON :
       case CPP_EXPR :
         if (tkn == '\n') {
-          if ( *status & CPP_EXPR ) {
-            *status &= ~CPP_EXPR;
-            if (expr_eval (expr, iexpr) ) {
-              *status |=  CPP_PARSE_ON;
-              *status &= ~CPP_PARSE_NOTYET;
-            }
-          }
-          else {
-            //macro_reduce (expr, iexpr); 
+          *status &= ~CPP_EXPR;
+          if (expr_eval (expr, iexpr) ) {
+            *status |=  CPP_PARSE_ON;
+            *status &= ~CPP_PARSE_NOTYET;
           }
           iexpr = 0;
           break;
         }
         if (tkn == ' ' || tkn == '\t')
           break;
+        /*
+        .. stack up tokens to evaluate expression #if.
+        .. Might need to redo ?. Don't know if macro substitutions
+        .. are allowe inside a # if expr
+        */
         if ( iexpr == nexpr )
           expr = realloc (expr, (nexpr *= 2)*sizeof (Token));
         expr [iexpr++] =   /* stack tokens to evaluate expr later */
@@ -563,7 +604,7 @@ int main ( int argc, char * argv[] ) {
   free (expr);
   free (macros);
 
-  if (status != env_status)
+  if (env_depth)
     cpp_warning ("# if not closed");
 
   return 0;

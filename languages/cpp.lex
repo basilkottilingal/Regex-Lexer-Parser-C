@@ -40,11 +40,12 @@ STRING (\"([^"\\\n]|{ES})*\")
   #define CPP_PARSE_ON           4
   #define CPP_PARSE_DONE         8
   #define CPP_PARSE_NOTYET       16
-  #define CPP_EXPR_EVALUATE      64
+  #define CPP_EXPR               64
   #define CPP_DEFINE             128
+  #define CPP_PARSE              (CPP_PARSE_ON|CPP_EXPR|CPP_DEFINE)
   #define CPP_ENV_DEPTHMAX       63
   #define CPP_ISNEGLECT                                              \
-    if ( !(*status & (CPP_PARSE_ON|CPP_EXPR_EVALUATE)) )             \
+    if ( !(*status & CPP_PARSE) )                                    \
       break
 
   static int * status;
@@ -55,6 +56,7 @@ STRING (\"([^"\\\n]|{ES})*\")
   static void location  ( );
   static void header    ( int is_std );
   static int  env_if    ( );
+  static int  env_ifdef ( int );
   static int  env_elif  ( );
   static int  env_else  ( );
   static int  env_endif ( );
@@ -87,10 +89,10 @@ STRING (\"([^"\\\n]|{ES})*\")
 %}
 	 
 %%
-(\\\n)     { 
+(\\\n)    { 
             //cpp_error ("cpp internal error : slicing unexpected");
-           }
-"%:"{1,2}  { 
+          }
+"%:"      { 
             //cpp_error ("cpp internal error : digraph %: expected");
           }
 "//".*    { }
@@ -120,13 +122,15 @@ STRING (\"([^"\\\n]|{ES})*\")
 ^{WS1}*#{WS1}*"if"{WS1}+       { 
             env_if ();
           }
-^{WS1}*#{WS1}*"ifdef"{WS1}+    { 
-            env_if (); 
+^{WS1}*#{WS1}*"ifdef"{WS1}+{ID}    { 
+            env_ifdef (1);
+            warn_trailing ();
           }
-^{WS1}*#{WS1}*"ifndef"{WS1}+   { 
-            env_if ();
+^{WS1}*#{WS1}*"ifndef"{WS1}+{ID}   { 
+            env_ifdef (0); 
+            warn_trailing ();
           }
-^{WS1}*#{WS1}*"elif"{WS1}+     {
+^{WS1}*#{WS1}*"elif"{WS1}+      {
             env_elif ();
           }
 ^{WS1}*#{WS1}*"else"           {
@@ -146,8 +150,13 @@ STRING (\"([^"\\\n]|{ES})*\")
             undefine_macro ();
             warn_trailing ();
           }
+^{WS1}*#{WS1}*"error".*  {
+            /* replace any macros */
+            cpp_fatal ("%s", yytext);
+          }
 ^{WS1}*#  {
-            cpp_error ("\n unknown # directive %s", yytext);
+            cpp_error ("\n not an ISO C99 # directive %s", yytext);
+            /* echo */
           }
 {ID}      { 
             return IDENTIFIER; 
@@ -266,19 +275,18 @@ int env_status [CPP_ENV_DEPTHMAX + 1] = {CPP_NONE|CPP_PARSE_ON};
 static int env_depth = 0;                     /* fixme : may resize */
 
 static int env_if ( ) {
-  if (env_depth == CPP_ENV_DEPTHMAX) {
+ printf ("New if");
+  if (env_depth == CPP_ENV_DEPTHMAX)
     cpp_fatal ("reached max depth of #if breanching");
-    exit (-1);
-  }
   ++env_depth;
-  *++status = CPP_EXPR_EVALUATE|CPP_IF;
+  *++status = CPP_EXPR|CPP_IF;
   return 0;
 }
 
 static int env_elif ( ) {
   if ( ! (*status & CPP_IF) ) {
-    cpp_warning ("#elif without #if");
-    exit (-1);
+    cpp_error ("#elif without #if");
+    return 1;
   }
   switch (*status & (CPP_PARSE_ON|CPP_PARSE_NOTYET|CPP_PARSE_DONE))
   {
@@ -289,7 +297,7 @@ static int env_elif ( ) {
       *status |=  CPP_PARSE_DONE;
       break;
     case CPP_PARSE_NOTYET :
-      *status |= CPP_EXPR_EVALUATE;
+      *status |= CPP_EXPR;
       break;
     default :
       cpp_fatal ("cpp - internal error : invalid parse status");
@@ -300,7 +308,8 @@ static int env_elif ( ) {
 
 static int env_else ( ) {
   if ( !((*status) & CPP_IF) ) {
-    cpp_warning ("#else without #if");
+    cpp_error ("#else without #if");
+    return 1;
   }
   *status &= ~(CPP_IF|CPP_PARSE_ON);
   *status |=  CPP_ELSE;
@@ -312,16 +321,13 @@ static int env_else ( ) {
 static int env_endif ( ) {
   if ( !((*status) & (CPP_IF|CPP_ELSE)) ) {
     cpp_error ("#endif without #if");
-    exit (-1);
+    return 1;
   }
   --env_depth;
   --status;
   return 0;
 }
 
-typedef struct Macro Macro;
-static Macro ** macro_lookup ( const char * id );
-static char *   macro_substitute ( Macro * m, char ** args );
 typedef struct Macro {
   char * key, * val, ** args;
   struct Macro * next;
@@ -330,19 +336,23 @@ typedef struct Macro {
 
 static Macro ** macros;
 static Macro * freelist = NULL;   /* hashtable & freelist of macros */
+
 #ifndef CPP_MACRO_TABLE_SIZE
-#define CPP_MACRO_TABLE_SIZE 8
+#define CPP_MACRO_TABLE_SIZE 1<<8
 #endif
-int table_size = CPP_MACRO_TABLE_SIZE;
+static int table_size = CPP_MACRO_TABLE_SIZE;
+
+static char * macro_substitute ( Macro * m, char ** args ) {
+}
 
 static
 Macro * macro_allocate () {
   if (!freelist) {
-    Macro * m = freelist =
-      malloc (CPP_MACRO_TABLE_SIZE * sizeof (Macro));
+    int n = CPP_MACRO_TABLE_SIZE;
+    Macro * m = freelist = malloc (n * sizeof (Macro));
     if (!m)
       cpp_fatal ("dynamic memory alloc failed in macro_allocate()");
-    for (int i=0; i<CPP_MACRO_TABLE_SIZE-1; ++i) {
+    for (int i=0; i<n-1; ++i) {
       *((Macro **) m) = m+1;
       ++m;
     }
@@ -429,12 +439,42 @@ static Macro ** lookup (const char * key) {
 }
 
 static void define_macro () {
-  char * content = get_content ();
-  printf ("\n#define %s : isfunc %d", yytext, *content == '(' );
+  char * id = strchr (yytext, 'n') + 2;
+  *status |= CPP_DEFINE;
+  while ( *id == ' ' || *id == '\t' ) {
+    id++;
+  }
+  Macro ** ptr = lookup (id), * m;
+  if ( (m = *ptr) ) {
+    cpp_warning ("redefinition of macro : %s", id);
+    /*fixme : clean */
+  }
+  else {
+    printf ("\nnew macro %s", id);
+    m = *ptr = macro_allocate ();
+    m->key = strdup (id);
+  }
+}
+
+static int env_ifdef (int _01_ ) {
+  
 }
 
 static void undefine_macro () {
-  printf ("\n#undef %s", yytext);
+  char * id = strchr (yytext, 'f') + 1;
+  while ( *id == ' ' || *id == '\t' ) {
+    id++;
+  }
+  Macro ** ptr = lookup (id), * m;
+  if ( !(m = *ptr) ) {
+    cpp_warning ("macro not found : %s", yytext);
+    return;
+  }
+  printf ("\nobsolete macro %s", id);
+  free (m->key); //clean properly
+  *((Macro **)m) = freelist;
+  freelist = m;
+  *ptr = NULL;
 }
 
 typedef struct Token {
@@ -482,18 +522,24 @@ int main ( int argc, char * argv[] ) {
   int tkn, nexpr = 128, iexpr = 0;
   Token * expr = malloc (nexpr * sizeof (Token));
   while ( (tkn = lxr_lex()) ) {
-    switch ( *status & (CPP_PARSE_ON|CPP_EXPR_EVALUATE) ) {
+    switch ( *status & CPP_PARSE ) {
       case 0 :
         break;
       case CPP_PARSE_ON :
         printf ("%s", yytext);
         break;
-      case CPP_EXPR_EVALUATE :
+      case CPP_DEFINE|CPP_PARSE_ON :
+      case CPP_EXPR :
         if (tkn == '\n') {
-          *status &= ~CPP_EXPR_EVALUATE;
-          if ( expr_eval (expr, iexpr) ) {
-            *status |=  CPP_PARSE_ON;
-            *status &= ~CPP_PARSE_NOTYET;
+          if ( *status & CPP_EXPR ) {
+            *status &= ~CPP_EXPR;
+            if (expr_eval (expr, iexpr) ) {
+              *status |=  CPP_PARSE_ON;
+              *status &= ~CPP_PARSE_NOTYET;
+            }
+          }
+          else {
+            //macro_reduce (expr, iexpr); 
           }
           iexpr = 0;
           break;
@@ -502,7 +548,7 @@ int main ( int argc, char * argv[] ) {
           break;
         if ( iexpr == nexpr )
           expr = realloc (expr, (nexpr *= 2)*sizeof (Token));
-        expr[iexpr++] =    /* stack tokens to evaluate expr later */
+        expr [iexpr++] =   /* stack tokens to evaluate expr later */
           (Token) {
             .start = yytext,
             .end   = yytext + yyleng,

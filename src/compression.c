@@ -144,7 +144,8 @@ int row_similarity ( Row * r, Row * c ) {
 .. on which ANSI C version you are using, etc ), you might need a 2D
 .. table size of few MBs and traversing through such a large table
 .. for every byte input is a bad idea. In scenarios like a C lexer,
-.. where this table is very sparse (δ (q, c) gives a "dead" state),
+.. where this table is very sparse ( i.e for a vary large number of
+.. states q, δ (q, c) gives a "dead" state ),
 .. you have a scope of compacting this 2D table into 3 linear
 .. tables "check[]", "next[]" and "base[]" as mentioned in many
 .. literature and also in codes like flex.
@@ -203,14 +204,14 @@ void row_print ( Row ** rows) {
 /*
 .. It is a heauristic approach. We have some rows of some density and
 .. size and we have to place one row after the other, such that
-.. (a) when we insert a row, 'r, see if there is a suitable candidate
+.. (a) when we insert a row, 'r', see if there is a suitable candidate
 .. row, 'p' which is already inserted. The candidate is chosen such a
 .. way that the number of entries common between the rows 'c' and 'p'
 .. are maximum. So we add only the entries which are not found in the
 .. candidate row. NOTE : (We have to consider REJECT transitions also,
 .. when considering the number of match/mismatch).
-.. Considering caches R(c), R(p), the cost of inserting c and then p,
-.. can be assumed as |R(c)| + |R(c)\R(p)| + |R(p)\R(c)|.
+.. Considering caches R(r), R(p), the cost of inserting r and then p,
+.. can be assumed as |R(r)| + |R(r)\R(p)| + |R(p)\R(r)|.
 .. (The third term on sum is for REJECT). So you can see, it can be
 .. ideal to insert smaller set first.
 .. (b) It's also intuitive to insert larger caches and later insert

@@ -4,6 +4,17 @@
 .. Note that the C11 preprocessor rules are a superset of C99's rules.
 ..
 .. Important, assumes \\\n and comments are removed
+..
+.. test this using a sample .c file like
+.. $ cd ../ && make languages/cpp.lxr && cd languages/ &&          \
+     gcc -fsanitize=address,leak -o cpp cpp.c &&                   \
+     ASAN_OPTIONS=detect_leaks=1 ./cpp < del.c
+..
+.. This lexer has some different behaviour compared to gcc/cpp
+.. lex.cc and gcc/c c-lex.c
+.. Example: 9abc will be read as one token in cpplib/lex.cc
+.. while this DFA based implementation might read them as two diff
+.. tokens.
 */
 
 O      [0-7]
@@ -358,34 +369,66 @@ static int env_endif ( ) {
 }
 
 typedef struct Macro {
-  char * key, * val, ** args;
+  char * key;                                    /* id of the macro */
+  int line, column; char * code;              /* used for debugging */
+  int nargs; char ** args;                  /* fixme : name of args */
   struct Macro * next;
   int  tu_scope;                                /* translation unit */
 } Macro;
 
 static Macro ** macros;
 static Macro * freelist = NULL;   /* hashtable & freelist of macros */
+static void * addresses = NULL;                     /* for cleaning */
+static char * allocator_p;
+static size_t allocator_s = 0;
+#define CPP_BUFF_SIZE     8192
+#define CPP_ID_SIZE_LIM   4096
+
+static char * strdup_ (const char * s) {
+  size_t l = strlen (s)+1;
+  if (l > allocator_s) {
+    if (l > CPP_ID_SIZE_LIM)
+      cpp_fatal ("buffer limit for identifier");
+    char * m = malloc (CPP_BUFF_SIZE);
+    if (m == NULL)
+      cpp_fatal ("dynamic memory allocation failed in strdup_()");
+    *( (void **) m) = addresses;
+    addresses = (void *) m;
+    allocator_p = m + 16;
+    allocator_s = CPP_BUFF_SIZE - 16;
+  }
+  char * m = allocator_p;
+  memcpy (m, s, l);
+  l = (l + (size_t) 15) & ~(size_t) 15;
+  allocator_p += l;
+  allocator_s -= l;
+  return m;
+}
 
 #ifndef CPP_MACRO_TABLE_SIZE
 #define CPP_MACRO_TABLE_SIZE 1<<8
 #endif
 static int table_size = CPP_MACRO_TABLE_SIZE;
 
-static char * macro_substitute ( Macro * m, char ** args ) {
-}
-
 static
 Macro * macro_allocate () {
   if (!freelist) {
     int n = CPP_MACRO_TABLE_SIZE;
-    Macro * m = freelist = malloc (n * sizeof (Macro));
-    if (!m)
+    char * address = malloc (n * sizeof (Macro) + 16);
+    if (!address)
       cpp_fatal ("dynamic memory alloc failed in macro_allocate()");
+    *( (void **) address) = addresses;
+    addresses = (void *) address;      /* linked list for free()ing */
+    Macro * m = freelist = (Macro *) (address + 16) ;
     for (int i=0; i<n-1; ++i) {
       *((Macro **) m) = m+1;
       ++m;
     }
     *((Macro **) m) = NULL;
+    /*
+    .. fixme : expand the hashtable too. Otherwise expect very large
+    .. number of collision
+    */
   }
   Macro * m = freelist;
   freelist = *((Macro **) m);
@@ -393,26 +436,19 @@ Macro * macro_allocate () {
   return m;
 }
 
+/*
+.. Murmur3 hashing
+*/
 static inline 
 uint32_t hash ( const char * key, uint32_t len ) {
   	
-  /* 
-  .. Seed is simply set as 0
-  */
-  uint32_t h = 0;
-  uint32_t k;
+  uint32_t h = 0, k;                     /* Seed is simply set as 0 */
 
-  /*
-  .. Dividing into blocks of 4 characters.
-  */
-  for (size_t i = len >> 2; i; --i) {
+  for (size_t i = len >> 2; i; --i) {    /* blocks of 4 characters  */
     memcpy(&k, key, sizeof(uint32_t));
     key += sizeof(uint32_t);
 
-    /*
-    .. Scrambling each block 
-    */
-    k *= 0xcc9e2d51;
+    k *= 0xcc9e2d51;                     /* scrambling each block   */
     k = (k << 15) | (k >> 17);
     k *= 0x1b873593;
 
@@ -420,13 +456,8 @@ uint32_t hash ( const char * key, uint32_t len ) {
     h = ((h << 13) | (h >> 19)) * 5 + 0xe6546b64;
   }
 
-  /*
-  .. tail characters.
-  .. This is for little-endian.  You can find a different version 
-  .. which is endian insensitive.
-  */  
   k = 0; 
-  switch (len & 3) {
+  switch (len & 3) {                     /* tail characters.        */
     case 3: 
       k ^= key[2] << 16;
     case 2: 
@@ -439,17 +470,13 @@ uint32_t hash ( const char * key, uint32_t len ) {
       h ^= k;
   }
 
-  /* 
-  .. Finalize
-  */
-  h ^= len;
+  h ^= len;                              /* finalise                */
   h ^= (h >> 16);
   h *= 0x85ebca6b;
   h ^= (h >> 13);
   h *= 0xc2b2ae35;
   h ^= (h >> 16);
 
-  /* return murmur hash */
   return h;
 }
 
@@ -467,25 +494,87 @@ static Macro ** lookup (const char * key) {
   return p;
 }
 
+#define CPP_NARGS_MAX 128
+static char * macro_args (Macro * m, char * str) {
+  
+  char * code = strdup_ (str), * arg = code;
+  if (*arg != '(') {
+    m->nargs = -1;                           /* constant like macro */
+    return (m->code = code);
+  }
+    
+  static char * args [128];
+  int prev = '(', nargs = 0;                 /* function like macro */
+  char c = *++arg;
+    
+  do {
+    while (c == ' ' || c == '\t')
+      c = *++arg;
+    if (c == ')') {
+      if (prev == ',') {
+        return NULL;
+      }
+      break;
+    }
+    if (c == ',') {
+      if (prev != IDENTIFIER) {
+        return NULL;
+      }
+      prev = ',';
+      c = *++arg;
+      continue;
+    }
+    if ( prev == IDENTIFIER ||                       /* missing ',' */
+         !(c == '_' || (c <= 'z' && c >= 'a') ||
+          (c <= 'Z' && c >= 'A')) ) {
+      return NULL;
+    }
+    if (nargs == CPP_NARGS_MAX)
+      cpp_fatal ("cpp buffer limit : args [CPP_NARGX_MAX]");
+    args [nargs++] = arg; 
+    do {
+      c = *++arg;
+    } while ( c == '_' || (c <= 'z' && c >= 'a') ||
+      (c <= 'Z' && c >= 'A') || (c <= '9' && c >= '0'));
+    *arg = '\0';
+    prev = IDENTIFIER;
+  } while (c != '\0');
+
+  for (int i=0; i<nargs; ++i)
+    for (int j=i+1; j<nargs; ++j)
+      if (! strcmp (args [i], args [j]) ) {
+        cpp_error ("repeated arg %s", args [i]);
+        return NULL;
+      }
+
+printf(" args %d : ", nargs);for (int i=0; i<nargs; ++i) printf (" %s", args [i]); 
+
+  m->nargs = nargs;
+  /*fixme : allocate args */
+  return (m->code = ++arg); 
+}
+
 static void define_macro () {
   char * id = strchr (yytext, 'n') + 2;
-  while ( *id == ' ' || *id == '\t' ) {
+  while ( *id == ' ' || *id == '\t' )
     id++;
-  }
   Macro ** ptr = lookup (id), * m;
-  if ( (m = *ptr) ) {
+  if ( (m = *ptr) )
     cpp_warning ("redefinition of macro : %s", id);
-    /*fixme : clean */
-  }
-  else {
-    m = *ptr = macro_allocate ();
-    m->key = strdup (id);
-  }
-  char * def = get_content ();
-  printf ("\n**** new macro %s: %s", m->key, def);
   /*
-  .. fixme : (in loop) substitute macro substitions
+  .. fixme : The old one retains, eventhough pointer is replaced.
+  .. Think abut memory constarints/debuggability
   */
+  m = macro_allocate ();
+  m->key = strdup_ (id);
+  printf ("\n**** new macro %s: ", m->key);
+  char * def = get_content ();
+  char * code = macro_args (m, def);
+  if (!code) {
+    cpp_error ("wrong arguement list for macro");
+    return;
+  }
+printf(" def %s : ", code);
 }
 
 static int env_ifdef (int _01_) {
@@ -513,8 +602,8 @@ static void undefine_macro () {
     return;
   }
   printf ("\nobsolete macro %s", id);
-  free (m->key); //clean properly
-  *((Macro **)m) = freelist;
+  free (m->key); // fixme : clean properly
+  *((Macro **) m) = freelist;
   freelist = m;
   *ptr = NULL;
 }
@@ -563,6 +652,10 @@ int main ( int argc, char * argv[] ) {
     
   int tkn, nexpr = 128, iexpr = 0;
   Token * expr = malloc (nexpr * sizeof (Token));
+
+  /*
+  .. lexing/parsing
+  */
   while ( (tkn = lxr_lex()) ) {
     switch ( *status & CPP_PARSE ) {
       case 0 :
@@ -601,6 +694,14 @@ int main ( int argc, char * argv[] ) {
     }
   }
 
+  /*
+  .. Cleaning
+  */
+  while (addresses) {
+    void * m = addresses;
+    addresses = * ( (void **) addresses );
+    free (m);
+  }
   free (expr);
   free (macros);
 

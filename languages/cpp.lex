@@ -15,6 +15,9 @@
 .. Example: 9abc will be read as one token in cpplib/lex.cc
 .. while this DFA based implementation might read them as two diff
 .. tokens.
+..
+.. fixme : stack error/warning properly
+.. __VA_ARGS__, __VA_OPT__ (c23)
 */
 
 O      [0-7]
@@ -381,27 +384,26 @@ static Macro * freelist = NULL;   /* hashtable & freelist of macros */
 static void * addresses = NULL;                     /* for cleaning */
 static char * allocator_p;
 static size_t allocator_s = 0;
-#define CPP_BUFF_SIZE     8192
+#define CPP_PAGE_SIZE     8192
 #define CPP_ID_SIZE_LIM   4096
 
 static char * strdup_ (const char * s) {
-  size_t l = strlen (s)+1;
-  if (l > allocator_s) {
-    if (l > CPP_ID_SIZE_LIM)
+  size_t l = strlen (s)+1, _l = (l + (size_t) 15) & ~(size_t) 15;
+  if (_l > allocator_s) {
+    if (_l > CPP_ID_SIZE_LIM)
       cpp_fatal ("buffer limit for identifier");
-    char * m = malloc (CPP_BUFF_SIZE);
+    char * m = malloc (CPP_PAGE_SIZE);
     if (m == NULL)
       cpp_fatal ("dynamic memory allocation failed in strdup_()");
     *( (void **) m) = addresses;
     addresses = (void *) m;
     allocator_p = m + 16;
-    allocator_s = CPP_BUFF_SIZE - 16;
+    allocator_s = CPP_PAGE_SIZE - 16;
   }
   char * m = allocator_p;
   memcpy (m, s, l);
-  l = (l + (size_t) 15) & ~(size_t) 15;
-  allocator_p += l;
-  allocator_s -= l;
+  allocator_p += _l;
+  allocator_s -= _l;
   return m;
 }
 
@@ -413,13 +415,14 @@ static int table_size = CPP_MACRO_TABLE_SIZE;
 static
 Macro * macro_allocate () {
   if (!freelist) {
-    int n = CPP_MACRO_TABLE_SIZE;
+    int n = CPP_PAGE_SIZE;
     char * address = malloc (n * sizeof (Macro) + 16);
     if (!address)
       cpp_fatal ("dynamic memory alloc failed in macro_allocate()");
     *( (void **) address) = addresses;
     addresses = (void *) address;      /* linked list for free()ing */
     Macro * m = freelist = (Macro *) (address + 16) ;
+    n = (n - 16)/sizeof (Macro);
     for (int i=0; i<n-1; ++i) {
       *((Macro **) m) = m+1;
       ++m;
@@ -543,7 +546,7 @@ static char * macro_args (Macro * m, char * str) {
   for (int i=0; i<nargs; ++i)
     for (int j=i+1; j<nargs; ++j)
       if (! strcmp (args [i], args [j]) ) {
-        cpp_error ("repeated arg %s", args [i]);
+        cpp_error ("repeated parameter %s", args [i]);
         return NULL;
       }
 
@@ -571,7 +574,7 @@ static void define_macro () {
   char * def = get_content ();
   char * code = macro_args (m, def);
   if (!code) {
-    cpp_error ("wrong arguement list for macro");
+    cpp_error ("wrong argument list for macro %s", id);
     return;
   }
 printf(" def %s : ", code);
@@ -704,6 +707,7 @@ int main ( int argc, char * argv[] ) {
   }
   free (expr);
   free (macros);
+  lxr_clean(); 
 
   if (env_depth)
     cpp_warning ("# if not closed");

@@ -94,3 +94,9 @@ char a = "_FUNC_";
 #define WW(a,b,c)a+b+c  /* can ')' separate args & defn ? Yes. This is valid*/
 
 int ww = WW(1,1,1);
+
+#define repeated(a,a) a*a //repeated arg. error
+
+int rr = repeated (1,1);
+
+int/*...*/innnnt = 1;

@@ -97,6 +97,14 @@ int ww = WW(1,1,1);
 
 #define repeated(a,a) a*a //repeated arg. error
 
-int rr = repeated (1,1);
+int rr = repeated (1,1);   
 
-int/*...*/innnnt = 1;
+int/*...*/innnnt = 1;  /* don't forget to put a ' ' when you remove multiline comments */
+
+char ut[] ="unterminated string can cause problem for tokens in other lines
+#define __a(i)  i = 
+char ut[] = 'another untrminated string with invalid character \t	
+
+/* misplaced line splicing */\   jsbakjsa 
+\     
+char ww[] = "above line has white space after '\\'"; 

@@ -16,12 +16,17 @@ int  lxr_unput      ( );
 void lxr_clean      ( );
 ```
 
-# References, Read More
+## References, Read More
   1. regular expression (regex) are converted to NFA using [Thompson's NFA 
 construction](https://dl.acm.org/doi/abs/10.1145/363347.363387). Minimal
 implementation in C is [here](https://swtch.com/~rsc/regexp/regexp1.html)
-  2. NFA to DFA conversion and minimisation of DFA transition Table
-using [Hopcroft's algorithm](https://www.sciencedirect.com/science/article/abs/pii/B9780124177505500221)
+  2. NFA to DFA conversion and minimisation of DFA transition Table using [Hopcroft's
+algorithm](https://www.sciencedirect.com/science/article/abs/pii/B9780124177505500221)
+```
+Hopcroft, J. E.
+“An n log n algorithm for minimizing states in a finite automaton.”
+Theory of Machines and Computations, Academic Press, 1971, pp. 189–196.
+``
   3. Equivalence classes
   4. (b) Table-Based Lexers (DFA Execution Models)
 ```
@@ -35,7 +40,7 @@ Aho, Alfred V., and Ullman, Jeffrey D.
 Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC), 1971, pp. 116–123.
 ```
 
-## Tokenizer or Lexer reader
+# Tokenizer or Lexer reader
 
   Creates a lexer generator header from a .lex file. Input file supports
   same format as of flex's input file.

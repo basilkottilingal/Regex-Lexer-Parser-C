@@ -109,12 +109,13 @@ int main (int argc, char ** argv) {
   }
   lim = & bptr [MEMSIZE-1];
 
-  #define pop() bptr--
+  #define pop()   bptr--
  
-  int c, quote = 0, escape = 0, comment = 0, splicing;
+  int c, quote = 0, escape = 0, comment = 0, splicing,
+    percent = 0;
   while ( (c=input()) != EOF ) {
         
-    push ('\n');
+    push (c);
 
     if (c == '\n') {
       pop();
@@ -124,7 +125,8 @@ int main (int argc, char ** argv) {
           pop();
           continue;
         }
-        quote = 0;          /* may warn. unclosed quote. */
+        quote = 0;      
+        push ('\n');  /* may warn. unclosed quote. */
         strt = bptr;
         continue;
       }
@@ -148,6 +150,7 @@ int main (int argc, char ** argv) {
       if (!splicing)
         push ('\n');
       strt = bptr;
+      
       continue;
     }
 
@@ -161,10 +164,10 @@ int main (int argc, char ** argv) {
       continue;
     }
 
-    if ( comment ) {
+    if (comment) {
       comment  = 0;
       if ( c == '/' ) {
-        pop ();
+        pop (); pop ();
         /* consuming single line comment */
         while ( (c = input()) != EOF ) {
           if ( c == '\n' )
@@ -180,7 +183,7 @@ int main (int argc, char ** argv) {
         push ('\n');
       }
       else if ( c == '*') {
-        pop ();
+        pop (); pop ();
         /* consuming multi line comment */
         while ( (c = input()) != EOF ) {
           if ( c != '*' ) continue;
@@ -193,6 +196,16 @@ int main (int argc, char ** argv) {
       }
     }
 
+    if (percent) {
+      /* converting digraph "%:" to "#" */
+      percent = 0;
+      if (c == ':') {
+        pop (); pop ();
+        push ('#');
+        continue;
+      }
+    }
+
     switch (c) {
       case '/' :
         comment = 1;
@@ -200,6 +213,11 @@ int main (int argc, char ** argv) {
       case '"'  :
       case '\'' :
         quote = c;
+        break;
+      case '%' :
+        percent = 1;
+        break;
+      default :
         break;
     }
     

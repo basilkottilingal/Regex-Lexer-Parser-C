@@ -114,4 +114,10 @@ int c \
 = 1;
 
 char c [] = "split \ 
+quote";
+char c [] = "confusing invalid split \\ 
 quote"
+
+%: line 32 "fffile.h"
+   \  
+%: line 33 "ffffile.h"

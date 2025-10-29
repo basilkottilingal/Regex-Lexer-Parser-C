@@ -14,7 +14,10 @@ void lxr_source     ( const char * source );
 int  lxr_input      ( );
 int  lxr_unput      ( );
 void lxr_clean      ( );
+int  lxr_lex        ( );
 ```
+
+  (fixme : YYSTYPE not implemented)
 
 ## References, Read More
   1. regular expression (regex) are converted to NFA using [Thompson's NFA 
@@ -26,7 +29,7 @@ algorithm](https://www.sciencedirect.com/science/article/abs/pii/B97801241775055
 Hopcroft, J. E.
 “An n log n algorithm for minimizing states in a finite automaton.”
 Theory of Machines and Computations, Academic Press, 1971, pp. 189–196.
-``
+```
   3. Equivalence classes
   4. (b) Table-Based Lexers (DFA Execution Models)
 ```
@@ -39,6 +42,8 @@ Aho, Alfred V., and Ullman, Jeffrey D.
 “Compressed Representation of Finite Automata.”
 Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC), 1971, pp. 116–123.
 ```
+
+  (fixme : Do not remove non-reached states)
 
 # Tokenizer or Lexer reader
 
@@ -55,6 +60,33 @@ make lxr
 ```
 
   (fixme : export to bashrc. Might need LXRPATH also!!)
+
+## Input file
+  Input file format is the same as specified by flex
+```
+definitions
+%%
+rules
+%%
+user code
+```
+  There are few exceptions
+  1. flex option will be ignored
+  2. The OR operator as in the following cases are not-implemented
+```lex
+%%
+"foo" |
+"bar" { /*foo or bar : action */}
+%%
+```
+  Instead you can use single line OR operato, where action falls in the same
+  line as the pattern and there are no unwanted white spaces
+```lex
+%%
+"foo"|"bar" { /*foo or bar : action */}
+%%
+```
+  3. <\<EOF\>> token
 
 ### Regex
 

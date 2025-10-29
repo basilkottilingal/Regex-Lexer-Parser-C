@@ -1,3 +1,14 @@
+/*
+.. Translation phases 2 and 3.
+.. (a) Replaces multiline comment "\*".*"*\" with " "
+.. (b) Consumes single line comment "\\".*,
+.. (c) Replaces "%:" with "#"
+.. (d) Replaces "%:%:" with "##"
+.. (e) Consumes line splicing [\\][\n][ \t]*$
+.. (f) Consumes trailing white spaces [ \t]+$
+.. Assumes translation phase 1 is obsolete (and not required).
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -117,12 +128,12 @@ int main (int argc, char ** argv) {
         strt = bptr;
         continue;
       }
+
+      /*
+      .. pop trailing white spaces, and splicing "\\\n" if found
+      */
       splicing = 0;
       while ( (bptr != strt) ) {
-        /*
-        .. pop trailing white spaces.
-        .. see if the last non-white space character is '\\'
-        */
         if ( (c = bptr[-1]) == '\\' ) {
           if ( splicing )
             break;
@@ -159,8 +170,14 @@ int main (int argc, char ** argv) {
           if ( c == '\n' )
             break;
         }
-  //fixme : remove white spaces before "//" 
+        /* consume white space before "\\" */
+        while ( (bptr != strt) ) {
+          if ( ! ((c = bptr[-1]) == '\\' || c == '\t' ) )
+            break;
+          pop();
+        }
         continue;
+        push ('\n');
       }
       else if ( c == '*') {
         pop ();

@@ -113,5 +113,5 @@ char ww[] = "above line has white space after '\\'";
 int c \   
 = 1;
 
-char c [] = "split \
+char c [] = "split \ 
 quote"

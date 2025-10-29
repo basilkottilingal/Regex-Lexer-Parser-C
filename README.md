@@ -1,12 +1,39 @@
 # Overview
  
   Interested in developing lexers ( read source code token by token ) ?
-  Here is a minimal effort. (Not yet complete).
+  Here is a minimal effort.
 
-  Breaking down.
-  1. regular expression (regex) are used to represent tokens.
-  2. Non-deterministic tokens are build from regex
-  3. Deterministic tokens are build from 
+  The script can be used to create lexer source file like unix lex/
+  GNU [flex](https://github.com/westes/flex) (note : flex is no more
+  an official GNU package). For portability, it accepts flex's grammar
+  file with few exceptions in the patterns.
+  The main API function are
+
+```c
+void lxr_source     ( const char * source );
+int  lxr_input      ( );
+int  lxr_unput      ( );
+void lxr_clean      ( );
+```
+
+# References, Read More
+  1. regular expression (regex) are converted to NFA using [Thompson's NFA 
+construction](https://dl.acm.org/doi/abs/10.1145/363347.363387). Minimal
+implementation in C is [here](https://swtch.com/~rsc/regexp/regexp1.html)
+  2. NFA to DFA conversion and minimisation of DFA transition Table
+using [Hopcroft's algorithm](https://www.sciencedirect.com/science/article/abs/pii/B9780124177505500221)
+  3. Equivalence classes
+  4. (b) Table-Based Lexers (DFA Execution Models)
+```
+Aho, A. V., Sethi, R., and Ullman, J. D.
+Compilers: Principles, Techniques, and Tools (1st ed., 1986) — “The Dragon Book”.
+```
+  5. Table compression Techniques
+```
+Aho, Alfred V., and Ullman, Jeffrey D.
+“Compressed Representation of Finite Automata.”
+Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC), 1971, pp. 116–123.
+```
 
 ## Tokenizer or Lexer reader
 

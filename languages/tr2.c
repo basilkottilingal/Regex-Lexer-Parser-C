@@ -15,15 +15,11 @@ char * eob = NULL;
 char * eof = (char *) 1;
 char * ptr = NULL;
 
-#define MEMSIZE (1<<16)
+#define MEMSIZE (1<<14)
 
 Stack * stack () {
   Stack * s = malloc (sizeof (Stack));
-  if (!s) {
-    fprintf(stderr, "out of dynamic memory : malloc failed");
-    exit (-1);
-  }
-  if ( !(s->buff = malloc (MEMSIZE)) ) {
+  if ( !s || !(s->buff = malloc (MEMSIZE)) ) {
     fprintf(stderr, "out of dynamic memory : malloc failed");
     exit (-1);
   }
@@ -58,15 +54,16 @@ char * strt;
 char * lim;
 
 void echo () {
-  fprintf (stdout, "%s", buff);
+  fwrite (buff, 1, strt-buff, stdout);
+  memmove (buff, strt, bptr-strt);
+  bptr = & buff [bptr-strt];
+  strt = buff;
 }
 
 void push (int c) {
   if (bptr == lim) {
-    size_t size = (lim - buff) + 1,
-      older = strt-buff,
-      thisline = lim-strt;
-    if ( thisline > (size_t) (0.8* size) ) {
+    size_t size = (lim - buff) + 1;
+    if ( bptr-strt > (size_t) (0.8* size) ) {
       strt = buff = realloc (buff, 2*size);
       if (!buff) {
         fprintf(stderr, "out of dynamic memory : malloc failed");
@@ -75,19 +72,10 @@ void push (int c) {
       lim = & buff [2*size-1];
       bptr = & buff [size-1];
     }
-    else {
-      fwrite (buff, 1, older, stdout);
-      memmove (buff, strt, thisline);
-      strt = buff;
-      bptr = & buff [thisline];
-    }
+    else
+      echo ();
   }
   *bptr++ = (char) (unsigned char) c;
-}
-
-void eol () {
-  push ('\n');
-  strt = bptr;
 }
 
 
@@ -103,18 +91,53 @@ int main (int argc, char ** argv) {
     exit(-1);
   }
 
-  bptr = buff = malloc (MEMSIZE);
+  strt = bptr = buff = malloc (MEMSIZE);
   if (!buff) {
     fprintf(stderr, "out of dynamic memory : malloc failed");
     exit (-1);
   }
   lim = & bptr [MEMSIZE-1];
+
+  #define pop() bptr--
  
-  int c, quote = 0, escape = 0, comment = 0;
+  int c, quote = 0, escape = 0, comment = 0, splicing;
   while ( (c=input()) != EOF ) {
+        
+    push ('\n');
+
     if (c == '\n') {
-      quote = escape = comment = 0;
-      echo ();  
+      pop();
+      if (quote) {
+        if (escape) {
+          escape = 0;
+          pop();
+          continue;
+        }
+        quote = 0;          /* may warn. unclosed quote. */
+        strt = bptr;
+        continue;
+      }
+      splicing = 0;
+      while ( (bptr != strt) ) {
+        /*
+        .. pop trailing white spaces.
+        .. see if the last non-white space character is '\\'
+        */
+        if ( (c = bptr[-1]) == '\\' ) {
+          if ( splicing )
+            break;
+          splicing = 1;
+          pop();
+          continue;
+        }
+        if ( !(c == ' ' || c == '\t' ) )
+          break;
+        pop();
+      }
+      if (!splicing)
+        push ('\n');
+      strt = bptr;
+      continue;
     }
 
     if (quote) {
@@ -124,8 +147,33 @@ int main (int argc, char ** argv) {
         escape = 1;
       else if (c == quote)
         quote = 0;
-      echo (c);
       continue;
+    }
+
+    if ( comment ) {
+      comment  = 0;
+      if ( c == '/' ) {
+        pop ();
+        /* consuming single line comment */
+        while ( (c = input()) != EOF ) {
+          if ( c == '\n' )
+            break;
+        }
+  //fixme : remove white spaces before "//" 
+        continue;
+      }
+      else if ( c == '*') {
+        pop ();
+        /* consuming multi line comment */
+        while ( (c = input()) != EOF ) {
+          if ( c != '*' ) continue;
+          while ( (c = input()) == '*' ) {
+          }
+          if ( c == '/' ) break;
+        }
+        push (' ');
+        continue;
+      }
     }
 
     switch (c) {
@@ -136,17 +184,10 @@ int main (int argc, char ** argv) {
       case '\'' :
         quote = c;
         break;
-      case '{' :
-        depth++;
-        break;
-      case '}' :
-        depth--;
-        break;
-      case 
     }
     
   }
-  echo (EOF);
+  echo ();
 
   fclose(fp);
 
@@ -157,4 +198,5 @@ int main (int argc, char ** argv) {
     free (s);
     s = next;
   }
+  free (buff);
 }

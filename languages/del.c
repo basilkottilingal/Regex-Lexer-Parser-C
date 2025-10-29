@@ -10,6 +10,7 @@ int #
 #else
 int sss=0;
 #endif
+char aaaa = "mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmsssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss";
 
 
 #if A > 100 || /*
@@ -108,3 +109,9 @@ char ut[] = 'another untrminated string with invalid character \t
 /* misplaced line splicing */\   jsbakjsa 
 \     
 char ww[] = "above line has white space after '\\'"; 
+
+int c \   
+= 1;
+
+char c [] = "split \
+quote"

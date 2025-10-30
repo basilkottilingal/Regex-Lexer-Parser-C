@@ -19,31 +19,6 @@ int  lxr_lex        ( );
 
   (fixme : YYSTYPE not implemented)
 
-## References, Read More
-  1. regular expression (regex) are converted to NFA using [Thompson's NFA 
-construction](https://dl.acm.org/doi/abs/10.1145/363347.363387). Minimal
-implementation in C is [here](https://swtch.com/~rsc/regexp/regexp1.html)
-  2. NFA to DFA conversion and minimisation of DFA transition Table using [Hopcroft's
-algorithm](https://www.sciencedirect.com/science/article/abs/pii/B9780124177505500221)
-```
-Hopcroft, J. E.
-“An n log n algorithm for minimizing states in a finite automaton.”
-Theory of Machines and Computations, Academic Press, 1971, pp. 189–196.
-```
-  3. Equivalence classes
-  4. (b) Table-Based Lexers (DFA Execution Models)
-```
-Aho, A. V., Sethi, R., and Ullman, J. D.
-Compilers: Principles, Techniques, and Tools (1st ed., 1986) — “The Dragon Book”.
-```
-  5. Table compression Techniques
-```
-Aho, Alfred V., and Ullman, Jeffrey D.
-“Compressed Representation of Finite Automata.”
-Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC), 1971, pp. 116–123.
-```
-
-  (fixme : Do not remove non-reached states)
 
 # Tokenizer or Lexer reader
 
@@ -110,7 +85,8 @@ user code
 | `{n,m}`  | Bounded repetition   | Matches **between n and m** occurrences (inclusive)             |
 | `\`      | Escape | Removes special meaning from the next character (e.g., `\.` matches a literal `.`) |
 
-  3. NOTE : DOESN'T support any kind of pattern lookahead assertions.
+  3. Additionally uses quotes (ex : `"foo"`) for string matching as in flex
+  4. NOTE : DOESN'T support any kind of pattern lookahead assertions.
 ```lex
 foo\bar    { /* foo should be followed by bar */ }
 foo(?=bar) { /* foo should be followed by bar */ } 
@@ -120,7 +96,7 @@ foo(?!bar) { /* foo shouldn't be followed by bar */ }
   like using appropriate context sensitive parser, or implementing a lookahead
   using lxr\_input()/lxr\_unput()
 
-  4. NOTE : DOESN'T support EOF as in flex
+  5. NOTE : DOESN'T support EOF as in flex
 ```lex
 <<EOF>>    { /* flex allows EOF action, but not allowed in this code */ }
 ```
@@ -135,7 +111,7 @@ foo(?!bar) { /* foo shouldn't be followed by bar */ }
   int main () {
     char rgx[] = "(a|b)*c";
     char str[] = "aac";
-    int len = rgx_nfa_match (nfa, "aac"); // returns > 0, if successful
+    int len = rgx_nfa_match (nfa, "aac"); // returns > 0, if successfull
     if (len) {
       char holdchar = str [len-1];
       str [len-1] = '\0';
@@ -144,3 +120,28 @@ foo(?!bar) { /* foo shouldn't be followed by bar */ }
     }
   }
 ```
+## References, Read More
+  1. regular expression (regex) are converted to NFA using [Thompson's NFA 
+construction](https://dl.acm.org/doi/abs/10.1145/363347.363387). Minimal
+implementation in C is [here](https://swtch.com/~rsc/regexp/regexp1.html)
+  2. NFA to DFA conversion and minimisation of DFA transition Table using [Hopcroft's
+algorithm](https://www.sciencedirect.com/science/article/abs/pii/B9780124177505500221)
+```
+Hopcroft, J. E.
+“An n log n algorithm for minimizing states in a finite automaton.”
+Theory of Machines and Computations, Academic Press, 1971, pp. 189–196.
+```
+  3. Equivalence classes
+  4. (b) Table-Based Lexers (DFA Execution Models)
+```
+Aho, A. V., Sethi, R., and Ullman, J. D.
+Compilers: Principles, Techniques, and Tools (1st ed., 1986) — “The Dragon Book”.
+```
+  5. Table compression Techniques
+```
+Aho, Alfred V., and Ullman, Jeffrey D.
+“Compressed Representation of Finite Automata.”
+Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC), 1971, pp. 116–123.
+```
+
+  (fixme : Do not remove non-reached states)

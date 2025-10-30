@@ -134,4 +134,16 @@ quote"
 %:define STRINGIFY(a,b)  %:a, %:b
 char str [] = "digraph %: not recognized inside quotes";
 
+int misplacedDigraph = %:; /* should not be replaced */
+
+#define _misplacedDigraph(i,j) i %:%: j %:
+%: %: /* wrong */
+#define properlyplacedDigraph(i,j) i %:%: j
+
+int properlyplacedDigraph(a,b) = 10;
+
 STRINGIFY(x,y)
+
+#define ARG3(a,b,c) a*b+c
+
+int ARG3, b = ARG3(1,2,3);

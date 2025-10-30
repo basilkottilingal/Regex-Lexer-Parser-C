@@ -13,23 +13,21 @@
 #include <stdlib.h>
 #include <string.h>
 
-typedef struct Stack {
+typedef struct BuffStack {
   char * buff;
-  struct Stack * next;
-} Stack;
+  struct BuffStack * next;
+} BuffStack;
 
-Stack * head = NULL;
-
-FILE * fp;
-
-char * eob = NULL;
-char * eof = (char *) 1;
-char * ptr = NULL;
+static BuffStack * head = NULL;
+static FILE * fp;
+static char * eob = NULL;
+static char * eof = (char *) 1;
+static char * ptr = NULL;
 
 #define MEMSIZE (1<<14)
 
-Stack * stack () {
-  Stack * s = malloc (sizeof (Stack));
+static BuffStack * stack () {
+  BuffStack * s = malloc (sizeof (BuffStack));
   if ( !s || !(s->buff = malloc (MEMSIZE)) ) {
     fprintf(stderr, "out of dynamic memory : malloc failed");
     exit (-1);
@@ -39,11 +37,11 @@ Stack * stack () {
   return s;
 }
 
-int input () {
+static int input () {
   if (ptr == eob) {
     if (ptr == eof)
       return EOF;
-    Stack * s = stack ();
+    BuffStack * s = stack ();
     size_t n = fread (s->buff, 1, MEMSIZE - 1, fp);
     eob = s->buff + n;
     ptr = s->buff;
@@ -59,19 +57,23 @@ int input () {
   return (int) (unsigned char) *ptr++;
 }
 
-char * buff;
-char * bptr;
-char * strt;
-char * lim;
+static char * buff;
+static char * bptr;
+static char * strt;
+static char * lim;
 
-void echo () {
+static void echo () {
   fwrite (buff, 1, strt-buff, stdout);
   memmove (buff, strt, bptr-strt);
   bptr = & buff [bptr-strt];
   strt = buff;
 }
 
-void push (int c) {
+static void push (int c) {
+  /*
+  .. The current line is guaranteed in the buffer.
+  .. "strt" is the BOL (current line)
+  */
   if (bptr == lim) {
     size_t size = (lim - buff) + 1;
     if ( bptr-strt > (size_t) (0.8* size) ) {
@@ -89,10 +91,8 @@ void push (int c) {
   *bptr++ = (char) (unsigned char) c;
 }
 
-  
 #define pop()      bptr--
-
-int eol (int quote) {
+static int eol (int quote) {
   pop();
       
   char * p = bptr, c;
@@ -157,10 +157,9 @@ int main (int argc, char ** argv) {
     if (c == '\n') {
       compensate ++;
       if (eol (quote)) {
-        while (compensate--)
+        for (;compensate;--compensate)
           push ('\n');
         strt = bptr;
-        compensate = 0;
         quote = 0;
       }
       escape = 0;
@@ -192,10 +191,8 @@ int main (int argc, char ** argv) {
             break;
           pop();
         }
-        compensate ++;
-        while (compensate--)
+        for (++compensate; compensate; --compensate)
           push ('\n');
-        compensate = 0;
         strt = bptr;
         continue;
       }
@@ -203,12 +200,12 @@ int main (int argc, char ** argv) {
         pop (); pop ();
         /* consuming multi line comment */
         while ( (c = input()) != EOF ) {
-          if ( c == '\n' ) compensate++;
+          if ( c == '\n') compensate++;
           if ( c != '*' ) continue;
           while ( (c = input()) == '*' ) {
           }
           if ( c == '/' ) break;
-          if ( c == '\n' ) compensate++;
+          if ( c == '\n') compensate++;
         }
         push (' ');
         continue;
@@ -219,8 +216,21 @@ int main (int argc, char ** argv) {
     if (percent) {
       percent = 0;
       if (c == ':') {
-        pop (); pop ();
-        push ('#');
+        char * p = bptr - 2;
+        /* check if ^[ \t]*"%:" */
+        while (p != strt) {
+          if (!(*--p == ' '|| *p == '\t')) {
+            p = NULL; break;
+          }
+        }
+
+        //if (!p) {
+        //}
+
+        if (p) {
+          pop (); pop ();
+          push ('#');
+        }
         continue;
       }
     }
@@ -239,15 +249,16 @@ int main (int argc, char ** argv) {
       default :
         break;
     }
-    
   }
+
+  /* flush the left over characters in buff */
   echo ();
 
+  /* cleaning */
   fclose(fp);
-
-  Stack * s = head;
+  BuffStack * s = head;
   while (s){
-    Stack * next = s->next;
+    BuffStack * next = s->next;
     free (s->buff);
     free (s);
     s = next;

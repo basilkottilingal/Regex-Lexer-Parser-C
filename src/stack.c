@@ -8,7 +8,6 @@
 
 /*
 .. fixme : recover old memory blocks, during realloc.
-.. assumes sizeof(char) = 1
 */
 static Stack * pool = NULL;
 struct Freelist { Stack * next; };

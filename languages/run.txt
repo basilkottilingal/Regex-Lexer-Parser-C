@@ -1,0 +1,4 @@
+quick reference for testing:
+gcc -o tr2 tr2.c && ./tr2 del.c > del.i
+cd ../ && make languages/cpp.lxr && cd languages/ &&  gcc -fsanitize=address,leak -o cpp cpp.c && ASAN_OPTIONS=detect_leaks=1 ./cpp < del.c 
+cd ../ && make languages/c99.lxr && cd languages && gcc -o c99 c99.c && ./c99 < sample.c

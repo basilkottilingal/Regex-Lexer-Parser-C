@@ -71,22 +71,21 @@ rules
 user code
 ```
   There are few exceptions
-  1. flex option will be ignored
+  1. flex options will be ignored
   2. The OR operator as in the following cases are not-implemented
 ```lex
 %%
 "foo" |
-"bar" { /*foo or bar : action */}
+"bar" { /*foo or bar : action */ }
 %%
 ```
   Instead you can use single line OR operato, where action falls in the same
   line as the pattern and there are no unwanted white spaces
 ```lex
 %%
-"foo"|"bar" { /*foo or bar : action */}
+"foo"|"bar" { /*foo or bar : action */ }
 %%
 ```
-  3. <\<EOF\>> token
 
 ### Regex
 

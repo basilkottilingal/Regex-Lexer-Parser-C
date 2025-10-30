@@ -89,6 +89,46 @@ void push (int c) {
   *bptr++ = (char) (unsigned char) c;
 }
 
+  
+#define pop()      bptr--
+
+int eol (int quote) {
+  pop();
+      
+  char * p = bptr, c;
+  if (quote) {
+    while ( (c = *--p) != '"') {
+      if ( !(c == ' ' || c == '\t') )
+        break;
+    }
+    if (c == '\\') {
+      //stack warning. white space after "\\"
+      bptr = p;
+      return 0;
+    }
+    //stack warning. unclosed quote
+    return 1;
+  }
+
+  /*
+  .. pop trailing white spaces, and splicing "\\\n" if found
+  */
+  int splicing = 0;
+  while (p-- != strt) {
+    if ((c=*p) == '\\') {
+      if (splicing)
+        break;
+      //if (bptr-p>1) error ("trailing whitespace before '\\'");
+      splicing = 1;
+      continue;
+    }
+    if (!(c == ' '||c == '\t'))
+      break;
+  }
+  bptr = p+1;
+  return !splicing;
+}
+
 
 int main (int argc, char ** argv) {
   if (argc < 2) {
@@ -108,49 +148,22 @@ int main (int argc, char ** argv) {
     exit (-1);
   }
   lim = & bptr [MEMSIZE-1];
-
-  #define pop()   bptr--
- 
-  int c, quote = 0, escape = 0, comment = 0, splicing,
-    percent = 0;
+  int c, quote = 0, escape = 0, comment = 0,
+    percent = 0, compensate = 0;
+  char * backup;
   while ( (c=input()) != EOF ) {
-        
     push (c);
 
     if (c == '\n') {
-      pop();
-      if (quote) {
-        if (escape) {
-          escape = 0;
-          pop();
-          continue;
-        }
-        quote = 0;      
-        push ('\n');  /* may warn. unclosed quote. */
+      compensate ++;
+      if (eol (quote)) {
+        while (compensate--)
+          push ('\n');
         strt = bptr;
-        continue;
+        compensate = 0;
+        quote = 0;
       }
-
-      /*
-      .. pop trailing white spaces, and splicing "\\\n" if found
-      */
-      splicing = 0;
-      while ( (bptr != strt) ) {
-        if ( (c = bptr[-1]) == '\\' ) {
-          if ( splicing )
-            break;
-          splicing = 1;
-          pop();
-          continue;
-        }
-        if ( !(c == ' ' || c == '\t' ) )
-          break;
-        pop();
-      }
-      if (!splicing)
-        push ('\n');
-      strt = bptr;
-      
+      escape = 0;
       continue;
     }
 
@@ -179,25 +192,31 @@ int main (int argc, char ** argv) {
             break;
           pop();
         }
+        compensate ++;
+        while (compensate--)
+          push ('\n');
+        compensate = 0;
+        strt = bptr;
         continue;
-        push ('\n');
       }
       else if ( c == '*') {
         pop (); pop ();
         /* consuming multi line comment */
         while ( (c = input()) != EOF ) {
+          if ( c == '\n' ) compensate++;
           if ( c != '*' ) continue;
           while ( (c = input()) == '*' ) {
           }
           if ( c == '/' ) break;
+          if ( c == '\n' ) compensate++;
         }
         push (' ');
         continue;
       }
     }
 
+    /* converting digraph "%:" to "#" */
     if (percent) {
-      /* converting digraph "%:" to "#" */
       percent = 0;
       if (c == ':') {
         pop (); pop ();

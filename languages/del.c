@@ -117,7 +117,21 @@ char c [] = "split \
 quote";
 char c [] = "confusing invalid split \\ 
 quote"
-
+char c [] = "a white space after splicing \ 
+quote"
+char c [] = "multiple white spaces after splicing \  
+quote"
+char c [] = "multiple white spaces after splicing \\  
+quote"
 %: line 32 "fffile.h"
    \  
 %: line 33 "ffffile.h"
+
+/*..
+ Digraph
+*/
+
+%:define STRINGIFY(a,b)  %:a, %:b
+char str [] = "digraph %: not recognized inside quotes";
+
+STRINGIFY(x,y)

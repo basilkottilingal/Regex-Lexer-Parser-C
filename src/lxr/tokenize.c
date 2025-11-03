@@ -20,9 +20,6 @@
 #endif
 #define lxr_clear_stack()           stack_idx = lxr_state_stack_size
 
-int lxr_line_no = 1;
-int lxr_col_no = 1;
-
 /*
 .. The main lexer function. Returns 0, when EOF is encountered. So,
 .. don't use return value 0 inside any action.
@@ -207,7 +204,6 @@ int lxr_lex () {
 .. [0x00, 0xFF]. Exception EOF
 */
 int lxr_input () {
-
   if (*lxr_bptr == lxr_eob_class) {
     yytext [yyleng] = lxr_hold_char;
     lxr_buffer_update ();
@@ -271,39 +267,46 @@ static void lxr_buffer_update () {
     * s = (lxr_buff_stack) {
       .size  = size,
       .bytes = lxr_alloc (size + 2),
-      .class = lxr_alloc (size + 2),
       .next  = lxr_buff_stack_current
     };
-    if ( s->bytes == NULL || s->class == NULL ) {
+    if (lxr_class_buff_size < size) {
+      lxr_class_buff_size = size;
+      lxr_class_buff = lxr_realloc (lxr_class_buff, size + 2); 
+    }
+    if ( s->bytes == NULL || lxr_class_buff == NULL ) {
       fprintf (stderr, "lxr_alloc failed");
       exit (-1);
     }
     memcpy (s->bytes, & yytext [-1], non_parsed + 1);
-    memcpy (s->class, lxr_start,     non_parsed);
+    memmove (lxr_class_buff, lxr_start, non_parsed);
 
     lxr_buff_stack_current = s; 
   }
   else {
     size = s->size * 2;
     s->bytes = lxr_realloc (s->bytes, size + 2);
-    s->class = lxr_realloc (s->class, size + 2);
+    if (lxr_class_buff_size < size) {
+      lxr_class_buff_size = size;
+      lxr_class_buff = lxr_realloc (lxr_class_buff, size + 2); 
+    }
     s->size  = size;
-    if ( s->bytes == NULL || s->class == NULL ) {
+    if ( s->bytes == NULL || lxr_class_buff == NULL ) {
       fprintf (stderr, "lxr_realloc failed");
       exit (-1);
     }
   }
 
   yytext = s->bytes + 1;
-  lxr_start = s->class;
+  lxr_start = lxr_class_buff;
   lxr_bptr = lxr_start + non_parsed;
   lxr_hold_char = *yytext;
-    
+  
+  /* fixme : what in case source is a byte array */ 
   size_t bytes =
-    fread ( & yytext [non_parsed], 1, lxr_size - non_parsed, lxr_in );
+    fread ( & yytext [non_parsed], 1, size - non_parsed, lxr_in );
 
   unsigned char end_class = lxr_eob_class;
-  if (bytes < lxr_size - non_parsed) {
+  if (bytes < size - non_parsed) {
     if (!feof (lxr_in)) {
       fprintf (stderr, "lxr buffer : fread failed !!");
       exit (-1);
@@ -317,4 +320,3 @@ static void lxr_buffer_update () {
   yytext   [bytes + non_parsed] = '\0';
 
 }
-

@@ -24,6 +24,7 @@ STRING \"([^"\\\n]|{ES})*\"
 #include "tokens.h"
 static int column = 1, line = 1;
 char * file;
+  #define  LXR_BUFF_SIZE 128
  
 %}
 	 

@@ -7,10 +7,12 @@
   GNU [flex](https://github.com/westes/flex) (note : flex is no more
   an official GNU package). For portability, it accepts flex's grammar
   file with few exceptions in the patterns.
-  The main API function are
+  The main [API](https://github.com/basilkottilingal/lexer/blob/main/src/lxr/api.c)
+  function are
 
 ```c
 void lxr_source     ( const char * source );
+void lxr_read_bytes ( const unsigned char * bytes, size_t len );
 int  lxr_input      ( );
 int  lxr_unput      ( );
 void lxr_clean      ( );
@@ -111,11 +113,11 @@ foo(?!bar) { /* foo shouldn't be followed by bar */ }
   int main () {
     char rgx[] = "(a|b)*c";
     char str[] = "aac";
-    int len = rgx_nfa_match (nfa, "aac"); // returns > 0, if successfull
+    int len = rgx_nfa_match (rgx, str); // returns > 0, if successfull
     if (len) {
       char holdchar = str [len-1];
       str [len-1] = '\0';
-      printf ("substring %s matched pattern %s", str, rgx);
+      printf ("substring \"%s\" matched pattern \"%s\"", str, rgx);
       str [len-1] = holdchar;
     }
   }

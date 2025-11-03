@@ -938,16 +938,25 @@ int lex_print_source () {
 
   char buff[1024];
   size_t n;
-  FILE * source = fopen("./src/lxr/source.c", "r");
+  FILE * source = fopen("./src/lxr/api.c", "r");
+
   if (!source)
     return RGXERR;
-
   while ((n = fread(buff, 1, sizeof(buff)-1, source)) > 0) {
     buff [n] = '\0';
     echo (buff);
   }
-
   fclose (source);
+
+  source = fopen("./src/lxr/source.c", "r");
+  if (!source)
+    return RGXERR;
+  while ((n = fread(buff, 1, sizeof(buff)-1, source)) > 0) {
+    buff [n] = '\0';
+    echo (buff);
+  }
+  fclose (source);
+
   fflush (in);
   return 0;
 }

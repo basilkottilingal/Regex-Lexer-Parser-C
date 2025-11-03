@@ -105,20 +105,11 @@ STRING (\"([^"\\\n]|{ES})*\")
 %}
 	 
 %%
-(\\\n)    { 
-            //cpp_error ("cpp internal error : slicing unexpected");
-          }
 "%:"      { 
-            //cpp_error ("cpp internal error : digraph %: expected");
+            return '#';
           }
-"//".*    { }
-"/*"      {
-            int c;
-            while ( (c = lxr_input () ) != EOF ) {
-              if ( c != '*' ) continue;
-              while ( ( c = lxr_input () ) == '*' ) {}
-              if ( c == '/' ) break;
-            }
+"%:%:"    { 
+            return /* fixme */ '#';
           }
 ^{WS1}*#({WS1}*"line")?{WS1}+[0-9]+{WS1}+{STRING}        {
             CPP_ISNEGLECT;
@@ -248,38 +239,13 @@ static char * get_content () {
 }
 
 static void warn_trailing () {
-  /*
-  .. optimize : by removing \\\n, comments apriori
-  */
-  int err = 0, c, p = '\0';
-  while ( (c = lxr_input ()) != '\0' ) {
-    if ( c == '/' && p == '/' ) {
-      --err;
-      while ( (c = lxr_input ()) != '\0' && c != '\n' ) {
-      }
-      break;
+  int c;
+  while ( (c = lxr_input ()) != '\n' ) {
+    else if ( ! (c == ' ' || c == '\t') ) {
+      cpp_warning ("bad trailing characters after %s", yytext);
+      return;
     }
-    if ( c == '\n' ) {
-      if ( p != '\\' ) break;
-      --err;
-    }
-    else if ( c == '*' && p == '/' ) {
-      --err;
-      while ( (c = lxr_input ()) != EOF ) {
-        if ( c != '*' ) continue;
-        while ( ( c = lxr_input () ) == '*' ) {
-        }
-        if ( c == '/' ) break;
-      }
-      if ( c == EOF )
-        cpp_warning ("non-terminated /*");
-    }
-    else if ( ! (c == ' ' || c == '\t') )
-      ++err;
-    p = c; 
   }
-  if (err)
-    cpp_warning ("bad trailing characters after %s", yytext);
 }
 
 static

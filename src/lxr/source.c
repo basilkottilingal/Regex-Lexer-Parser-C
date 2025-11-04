@@ -78,6 +78,7 @@ void lxr_read_bytes (const char * bytes, size_t len, int eob) {
   lxr_bytes_start = & bytes [size];
   lxr_bytes_end   = & bytes [len];
   lxr_hold_char   = * yytext;
+  lxr_bptr = lxr_start = lxr_class_buff;
   *yytext = '\0';
   lxr_source_type = lxr_source_is_bytes;
 }

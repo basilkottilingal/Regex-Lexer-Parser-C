@@ -67,4 +67,5 @@ all: obj/rgx.a
 	$(MAKE) languages/c/c99.lxr
 	$(MAKE) languages/basic/lexer.lxr
 	$(MAKE) languages/c99.lxr
+	$(MAKE) languages/readbytes.lxr
 	$(MAKE) languages/cpp.lxr

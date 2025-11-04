@@ -605,7 +605,7 @@ static Row ** rows_create () {
   #define NEWSTATE(_s) (_s+1)
 
   int m = nstates + 1, n = nclass;
-  Row ** rows = allocate ( (m+1) * sizeof (Row *) );
+  Row ** rows = allocate ( (m+2) * sizeof (Row *) );
   for (int k=0; k<m;) {
     int nr = m - k;
     if (nr > PAGE_SIZE / sizeof (Row)) nr = PAGE_SIZE / sizeof (Row);
@@ -613,12 +613,30 @@ static Row ** rows_create () {
     while (nr--) rows [k++] = mem++;
   }
 
-  int stack [512], eob_state = NEWSTATE (nstates), ntrans;
-  DState * eof = states[0]->next [EOF_CLASS];
+  int stack [512], ntrans, eob_state = nstates;
+  DState * eob = allocate (sizeof (DState)),
+         * eof = states[0]->next [EOF_CLASS];
+
+  if (!eof || (eof != states[1]->next [EOF_CLASS])) {
+    error ("error : EOF transition not set for starting DFA(s)");
+    return NULL;
+  }
+
+  *eob = (DState) {
+    .i = eob_state,
+    .flag = RGXMATCH (eof) + 1,     /* internally used accept state */
+    .next = allocate (n*sizeof (DState *))   /* Null, for all class */
+  };
 
   for (int s=0; s<nstates; ++s) {
-    ntrans = 0; DState ** d = states[s]->next;
-    for (int c = 0; c < n; ++c) 
+
+    DState ** d = states[s]->next;
+    if (states [s] != eof && states [s] != eob)
+      /* add EOB transition to each states except EOB/EOF states */
+      d [EOB_CLASS] = eob;
+
+    ntrans = 0;
+    for (int c = 0; c < n; ++c)
       if (d[c]) {
         stack [ntrans++] = c;
         stack [ntrans++] = NEWSTATE (d[c]->i);
@@ -636,11 +654,6 @@ static Row ** rows_create () {
       h = (h ^ (uint32_t) stack [ntrans-2]) * 16777619u;
     }
 
-    if (states [s] != eof) {
-      stack [ntrans++] = EOB_CLASS; /* Add EOB transition to all .. */
-      stack [ntrans++] = eob_state; /* .. states, except EOF state  */
-    }
-
     int * copy = allocate (sizeof (int) * ntrans);
     memcpy ( copy, stack, sizeof (int) * ntrans );
     *(rows[s]) = (Row) {
@@ -649,14 +662,10 @@ static Row ** rows_create () {
     };
   }
 
-  if (eof)
-    *(rows[nstates]) = (Row) {                         /* EOB state */
-      .s = eob_state, .n = 0, .hash = HASH,
-      .token = RGXMATCH (eof) + 1,
-      .stack = allocate (0)
-    };
-  else
-    error ("warning : EOF transition not set for starting DFA");
+  *(rows[eob_state]) = (Row) {               /* row corresponds EOB */
+    .s = NEWSTATE (eob_state), .n = 0, .hash = HASH,
+    .token = RGXMATCH (eob), .stack = allocate (8)
+  };
 
   return rows;
 
@@ -673,6 +682,7 @@ int dfa_eol_used () {
 }
 
 int dfa_tables (int *** tables, int ** tsize) {
+printf ("\ntable strt"); fflush(stdout);
 
   /*
   .. A lexer cannot allow zero length tokens, because this non
@@ -704,7 +714,6 @@ int dfa_tables (int *** tables, int ** tsize) {
   len [2] = len [3] = len [4] = m + 1;      /* can hold index : [m] */
   len [5] = n;  len [6] = 256;
 
-
   int * base = allocate (m * sizeof (int)),
     * accept = allocate (m * sizeof (int)),
     * def = allocate (m * sizeof (int)),
@@ -720,7 +729,9 @@ int dfa_tables (int *** tables, int ** tsize) {
   .. Will return the compressed linear tables, if it didn't
   .. encounter common errors like very large table requirement
   */
-  int status = rows_compression (rows_create (), tables, tsize, m, n );
+  Row ** rows = rows_create ();
+  if (!rows) return RGXERR;
+  int status = rows_compression (rows, tables, tsize, m, n );
   if (status < 0) return RGXERR;
 
   #if 1                        /* fixme : make it compiler optional */

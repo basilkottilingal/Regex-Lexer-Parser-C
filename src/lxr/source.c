@@ -33,6 +33,7 @@ static char lxr_hold_char = '\0';
 static lxr_buff_stack * lxr_buff_stack_current = NULL;
 
 void lxr_source (const char * in) {
+  /* fixme : warn in case "bytes[]" is being used */
   if (lxr_in) {
     fprintf (stderr, "cannot change source file in the middle."
       "\nuse lxr_stack_push (source) to change source file."
@@ -45,15 +46,41 @@ void lxr_source (const char * in) {
     exit (-1);
   }
   lxr_infile = strdup (in);
+  lxr_source_type = lxr_source_is_file;
 }
 
-void lxr_read_bytes (const unsigned char * bytes, size_t len) {
+void lxr_read_bytes (const char * bytes, size_t len, int eob) {
+  /* fixme : in case another byte source available */
+  size_t size = len < lxr_size ? len : lxr_size;
+  lxr_buff_stack * bf = malloc (sizeof (lxr_buff_stack));
+  char * b = malloc (size + 2);
+  if (lxr_class_buff_size < size)
+    lxr_class_buff_size *= 2;
+  lxr_class_buff =
+    lxr_realloc (lxr_class_buff, lxr_class_buff_size + 2);
+  if ( bf == NULL || b == NULL || lxr_class_buff == NULL ) {
+    fprintf (stderr, "lxr_realloc failed");
+    exit (-1);
+  }
+  bf->bytes = b;
+  bf->next = lxr_buff_stack_current;
+  lxr_buff_stack_current = bf;
+  if (eob) b [0] = '\n';
+  yytext = & b [1];
+  yyleng = 0;
+  memcpy (yytext, bytes, size);
+  unsigned char * ub = (unsigned char *) yytext, 
+    * cls = lxr_class_buff;
+  for (size_t i=0; i<size; ++i)
+    *cls++ = lxr_class [*ub++];
+  cls [0] = cls [1] =
+    (size < len ? lxr_eob_class : lxr_eof_class);
+  lxr_bytes_start = & bytes [size];
+  lxr_bytes_end   = & bytes [len];
+  lxr_hold_char   = * yytext;
+  *yytext = '\0';
+  lxr_source_type = lxr_source_is_bytes;
 }
-  
-#ifndef LXR_BUFF_SIZE
-  #define LXR_BUFF_SIZE  1<<16       /* default buffer size : 16 kB */
-#endif
-static size_t lxr_size = LXR_BUFF_SIZE;
 
 /*
 .. In case input() or unput () was called after accepting the last

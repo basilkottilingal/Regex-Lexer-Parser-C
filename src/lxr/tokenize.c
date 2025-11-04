@@ -24,8 +24,8 @@
 .. The main lexer function. Returns 0, when EOF is encountered. So,
 .. don't use return value 0 inside any action.
 */
-int lxr_lex () {
-
+YYSTYPE
+{
   static int states [lxr_state_stack_size];
   unsigned char * cls;
   int state, class, acc_token, acc_len, stack_idx,
@@ -236,7 +236,10 @@ int lxr_unput () {
 
 static void lxr_buffer_update () {
 
-  if (lxr_in == NULL) lxr_in = stdin;
+  if (lxr_in == NULL) {
+    lxr_in = stdin;
+    lxr_infile = strdup ("<stdin>");
+  }
 
   if (lxr_bptr [0] != lxr_eob_class ||
       lxr_bptr [1] != lxr_eob_class)
@@ -301,13 +304,32 @@ static void lxr_buffer_update () {
   lxr_bptr = lxr_start + non_parsed;
   lxr_hold_char = *yytext;
   
-  /* fixme : what in case source is a byte array */ 
-  size_t bytes =
-    fread ( & yytext [non_parsed], 1, size - non_parsed, lxr_in );
+  size_t bytes;
+  switch (lxr_source_type) {
+    case lxr_source_is_stdin :
+    case lxr_source_is_file  :
+      bytes = 
+        fread ( & yytext [non_parsed], 1, size - non_parsed, lxr_in );
+      break;
+    case lxr_source_is_bytes :
+      bytes =
+        (size_t) (lxr_bytes_end - lxr_bytes_start) <=
+        (size - non_parsed) ? 
+        (size_t) (lxr_bytes_end - lxr_bytes_start) :
+        (size - non_parsed) ;
+      memcpy ( & yytext [non_parsed], lxr_bytes_start, bytes );
+      lxr_bytes_start += bytes;
+      break;
+    default :
+      fprintf (stderr, "lxr_source_type unknown");
+      exit (-1);
+  }
 
   unsigned char end_class = lxr_eob_class;
   if (bytes < size - non_parsed) {
-    if (!feof (lxr_in)) {
+    if (! ((lxr_source_type == lxr_source_is_bytes) ? 
+           (lxr_bytes_start == lxr_bytes_end) : feof (lxr_in)) )
+    {
       fprintf (stderr, "lxr buffer : fread failed !!");
       exit (-1);
     }

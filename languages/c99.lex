@@ -124,4 +124,5 @@ int main () {
   while ( (tkn = lxr_lex()) ) {
     printf ("\n[%3d] : %s", tkn, yytext);
   }
+  lxr_clean ();
 }

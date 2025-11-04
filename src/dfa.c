@@ -682,7 +682,6 @@ int dfa_eol_used () {
 }
 
 int dfa_tables (int *** tables, int ** tsize) {
-printf ("\ntable strt"); fflush(stdout);
 
   /*
   .. A lexer cannot allow zero length tokens, because this non

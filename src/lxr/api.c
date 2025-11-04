@@ -54,7 +54,7 @@ void lxr_clean      ( );
 #endif
   
 #ifndef LXR_BUFF_SIZE
-  #define LXR_BUFF_SIZE  1<<16       /* default buffer size : 16 kB */
+  #define LXR_BUFF_SIZE  1<<14       /* default buffer size : 16 kB */
 #endif
 static size_t lxr_size = LXR_BUFF_SIZE;
 

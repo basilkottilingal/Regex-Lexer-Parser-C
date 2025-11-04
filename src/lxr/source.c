@@ -55,7 +55,7 @@ void lxr_read_bytes (const char * bytes, size_t len, int eob) {
   lxr_buff_stack * bf = malloc (sizeof (lxr_buff_stack));
   char * b = malloc (size + 2);
   if (lxr_class_buff_size < size)
-    lxr_class_buff_size *= 2;
+    lxr_class_buff_size = size;
   lxr_class_buff =
     lxr_realloc (lxr_class_buff, lxr_class_buff_size + 2);
   if ( bf == NULL || b == NULL || lxr_class_buff == NULL ) {

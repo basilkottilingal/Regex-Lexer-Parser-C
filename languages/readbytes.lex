@@ -122,10 +122,21 @@ char * file;
 int main () {
   int tkn;
 
-  const char str [] = "char str[] = \"str\";";
+  const char str [] = 
+    "char str[] = \"str\";\n"
+    "/*..........................\n"
+    "............................\n"
+    "............................\n"
+    "............................*/"
+    "int x = 100;\n"
+    "int func (void) {\n"
+    "  return 100;\n"
+    "}\n"
+    ;
   lxr_read_bytes (str, strlen (str), 1);
   while ( (tkn = lxr_lex()) ) {
     printf ("\n[%3d] : %s", tkn, yytext);
+    fflush (stdout);
   }
   lxr_clean ();
 }

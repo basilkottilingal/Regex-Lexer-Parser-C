@@ -618,7 +618,7 @@ static Row ** rows_create () {
          * eof = states[0]->next [EOF_CLASS];
 
   if (!eof || (eof != states[1]->next [EOF_CLASS])) {
-    error ("error : EOF transition not set for starting DFA(s)");
+    error ("internal error : EOF transition not set properly");
     return NULL;
   }
 
@@ -631,8 +631,8 @@ static Row ** rows_create () {
   for (int s=0; s<nstates; ++s) {
 
     DState ** d = states[s]->next;
-    if (states [s] != eof && states [s] != eob)
-      /* add EOB transition to each states except EOB/EOF states */
+    if (states [s] != eof)
+      /* add EOB transition to each states except EOF states */
       d [EOB_CLASS] = eob;
 
     ntrans = 0;

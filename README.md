@@ -16,11 +16,12 @@ void lxr_read_bytes ( const unsigned char * bytes, size_t len );
 int  lxr_input      ( );
 int  lxr_unput      ( );
 void lxr_clean      ( );
-int  lxr_lex        ( );
 ```
-
-  (fixme : YYSTYPE not implemented)
-
+  In case lexer function's signature (YYSTYPE) is not provided by the user,
+  the default lexer function will look like
+```c
+int lxr_lex ();
+```
 
 # Tokenizer or Lexer reader
 
@@ -134,7 +135,7 @@ Hopcroft, J. E.
 Theory of Machines and Computations, Academic Press, 1971, pp. 189–196.
 ```
   3. Equivalence classes
-  4. (b) Table-Based Lexers (DFA Execution Models)
+  4. Table-Based Lexers (DFA Execution Models)
 ```
 Aho, A. V., Sethi, R., and Ullman, J. D.
 Compilers: Principles, Techniques, and Tools (1st ed., 1986) — “The Dragon Book”.
@@ -146,4 +147,8 @@ Aho, Alfred V., and Ullman, Jeffrey D.
 Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC), 1971, pp. 116–123.
 ```
 
-  (fixme : Do not remove non-reached states)
+
+## ToDo
+  1. Remove non-reached states
+  2. YYSTYPE not tested for return type other than `int`
+  3. OR operator ('|') for multiple patterns with same action 

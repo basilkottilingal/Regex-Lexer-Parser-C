@@ -26,7 +26,7 @@ static char lxr_hold_char = '\0';
 #define lxr_reset() do {                                             \
     lxr_start = lxr_bptr = lxr_dummy;                                \
     lxr_hold_char = '\0';                                            \
-    yytext = lxr_sample + 1;                                         \
+    yytext = & lxr_yytext_dummy [1];                                 \
     yyleng = 0;                                                      \
   } while (0)
 

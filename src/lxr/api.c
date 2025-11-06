@@ -18,9 +18,11 @@
 ..     source for the lexer.
 .. - lxr_read_bytes ( const char * bytes, size_t len, int bol ) : 
        sets "bytes []" as the input source.
-..     "len" is the size of bytes[]. Non-zero value of "bol" assumes
-..     the bytes[] satisfy BOL status. Assumes the last byte of
-..     bytes[] is followed by EOF.
+..     "len" is the size of bytes[]. Input non-zero value for "bol" if
+..     the first character from bytes[] satisfy BOL status. Assumes
+..     the last character of bytes[] is followed by EOF.
+..     Warning : expects "bytes []" is not modified in the middle of
+..     parsing.
 .. - lxr_input () : return the next byte from the input source and
 ..     move the reading pointer forwards. Return value in [0x00, 0xFF]
 ..     or EOF (-1)
@@ -74,13 +76,13 @@ static const char * lxr_bytes_start = NULL;
 static const char * lxr_bytes_end   = NULL;
 
 static void lxr_buffer_update ();
+static char lxr_yytext_dummy[] = "\n";
 
 /*
 .. yytext and yyleng are respectively the token text and token length
 .. of the last accepted token
 */
-static char lxr_sample[] = "\ndummy";
-char * yytext = lxr_sample + 1;
+char * yytext = & lxr_yytext_dummy [1];
 int    yyleng = 0;
 
 /*

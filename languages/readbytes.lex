@@ -21,8 +21,9 @@ STRING \"([^"\\\n]|{ES})*\"
 
 %{
 
-/* over ride the lxr default buff size of 16 kB */
+/* override the lxr default buff size of 16 kB   */
 #define  LXR_BUFF_SIZE 128
+
 /* let's use yylex() for lexer fn as in lex/flex */
 #define  YYSTYPE  int yylex (int inval)
 
@@ -138,9 +139,12 @@ int main () {
     "}\n"
     ;
   lxr_read_bytes (str, strlen (str), 1);
+
   while ( (tkn = yylex (0)) ) {
     printf ("\n[%3d] : %s", tkn, yytext);
     fflush (stdout);
   }
+
+
   lxr_clean ();
 }

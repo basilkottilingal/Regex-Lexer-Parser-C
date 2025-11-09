@@ -14,7 +14,7 @@
 #include <string.h>
 
 typedef struct BuffStack {
-  char * buff;
+  char * buff, * eof;
   struct BuffStack * next;
 } BuffStack;
 
@@ -24,35 +24,40 @@ static char * eob = NULL;
 static char * eof = (char *) 1;
 static char * ptr = NULL;
 
-#define MEMSIZE (1<<14)
+#ifndef CPP_PAGE_SIZE
+  #define CPP_PAGE_SIZE (1<<14)
+#endif
+static size_t page_size = CPP_PAGE_SIZE;
+void page_size_set (size_t s) {
+  page_size = s;
+}
 
-static BuffStack * stack () {
+static int input_stack () {
   BuffStack * s = malloc (sizeof (BuffStack));
-  if ( !s || !(s->buff = malloc (MEMSIZE)) ) {
-    fprintf(stderr, "out of dynamic memory : malloc failed");
+  if ( !s || !(s->buff = malloc (page_size)) ) {
+    fprintf(stderr, "cpp out of dynamic memory : malloc failed");
     exit (-1);
   }
   s->next = head;
   head = s;
-  return s;
+  size_t n = fread (s->buff, 1, page_size - 1, fp);
+  eob = s->buff + n;
+  ptr = s->buff;
+  if (n < page_size - 1) {
+    if (!feof (fp)) {
+      fprintf (stderr, "fread () failed");
+      exit (-1);
+    }
+    eof = s->buff + n;
+    if (!n) return 1;
+  }
+  return 0;
 }
 
 static int input () {
   if (ptr == eob) {
-    if (ptr == eof)
+    if (ptr == eof || input_stack ())
       return EOF;
-    BuffStack * s = stack ();
-    size_t n = fread (s->buff, 1, MEMSIZE - 1, fp);
-    eob = s->buff + n;
-    ptr = s->buff;
-    if (n < MEMSIZE - 1) {
-      if (!feof (fp)) {
-        fprintf (stderr, "fread () failed");
-        exit (-1);
-      }
-      eof = s->buff + n;
-      if (!n) return EOF;
-    }
   }
   return (int) (unsigned char) *ptr++;
 }
@@ -79,7 +84,8 @@ static void push (int c) {
     if ( bptr-strt > (size_t) (0.8* size) ) {
       strt = buff = realloc (buff, 2*size);
       if (!buff) {
-        fprintf(stderr, "out of dynamic memory : malloc failed");
+        fprintf(stderr, 
+          "cpp : out of dynamic memory : malloc failed");
         exit (-1);
       }
       lim = & buff [2*size-1];
@@ -142,12 +148,12 @@ int main (int argc, char ** argv) {
     exit(-1);
   }
 
-  strt = bptr = buff = malloc (MEMSIZE);
+  strt = bptr = buff = malloc (page_size);
   if (!buff) {
     fprintf(stderr, "out of dynamic memory : malloc failed");
     exit (-1);
   }
-  lim = & bptr [MEMSIZE-1];
+  lim = & bptr [page_size-1];
   int c, quote = 0, escape = 0, comment = 0,
     percent = 0, compensate = 0;
   char * backup;

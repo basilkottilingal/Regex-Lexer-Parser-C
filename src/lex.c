@@ -315,7 +315,7 @@ static int macro_new (char * macro, char * pattern) {
 
   if ( ! ( (rgx [0] == '[' && rgx [len-1] == ']') ||
        (rgx [0] == '(' && rgx [len-1] == ')') ) ) {
-    error ("warning : bracket, ( ), suggested for macro %s", macro);
+    error ("warning : paranthesis, ( ), suggested for macro %s", macro);
   }
   
   return 0;

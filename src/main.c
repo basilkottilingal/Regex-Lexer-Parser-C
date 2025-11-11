@@ -60,5 +60,10 @@ int main (int argc, char ** argv) {
     exit (-1);
   }
 
+  /*
+  .. clean allocated memory blocks
+  */
+  rgx_free (); 
+
   return 0;
 }

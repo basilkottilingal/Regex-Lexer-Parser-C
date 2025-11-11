@@ -98,6 +98,7 @@ foo(?!bar) { /* foo is not followed by bar */ }
   So it's upto user to handle these look ahead patterns by appropriate alternative methods
   like using appropriate context sensitive parser, or implementing a lookahead
   using `lxr_input()` and/or `lxr_unput()`
+
   5. NOTE : DOESN'T support EOF as in flex
 ```lex
 <<EOF>>    { /* flex allows EOF action, but not allowed in this code */ }
@@ -152,4 +153,5 @@ Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC), 1971,
 
   1. Remove non-reached states
   2. YYSTYPE not tested for return type other than `int`
-  3. OR operator ('|') for multiple patterns with same action 
+  3. OR operator ('|') for multiple patterns with same action
+  4. garbage collection : deallocate () in case memory is constrained

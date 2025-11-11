@@ -64,8 +64,9 @@ all: obj/rgx.a
 	$(MAKE) obj/hopcroft.tst
 	$(MAKE) obj/tokens-nfa.tst
 	$(MAKE) languages/json/json.lxr
-	$(MAKE) languages/c/c99.lxr
-	$(MAKE) languages/basic/lexer.lxr
-	$(MAKE) languages/c99.lxr
-	$(MAKE) languages/readbytes.lxr
-	$(MAKE) languages/cpp.lxr
+	$(MAKE) languages/test/lexer.lxr
+	$(MAKE) languages/c99/c99.lxr
+	$(MAKE) languages/c99/c99-bytes.lxr
+	# following will throw error
+	- $(MAKE) languages/test/error_nonreach.lxr
+	- $(MAKE) languages/test/error_zerolengthtoken.lxr

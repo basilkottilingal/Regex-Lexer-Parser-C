@@ -91,14 +91,13 @@ user code
   3. Additionally uses quotes (ex : `"foo"`) for string matching as in flex
   4. NOTE : DOESN'T support any kind of pattern lookahead assertions.
 ```lex
-foo\bar    { /* foo should be followed by bar */ }
-foo(?=bar) { /* foo should be followed by bar */ } 
-foo(?!bar) { /* foo shouldn't be followed by bar */ } 
+foo/bar    { /* foo is followed by bar */ }
+foo(?=bar) { /* foo is followed by bar */ } 
+foo(?!bar) { /* foo is not followed by bar */ } 
 ```
   So it's upto user to handle these look ahead patterns by appropriate alternative methods
   like using appropriate context sensitive parser, or implementing a lookahead
-  using lxr\_input()/lxr\_unput()
-
+  using `lxr_input()` and/or `lxr_unput()`
   5. NOTE : DOESN'T support EOF as in flex
 ```lex
 <<EOF>>    { /* flex allows EOF action, but not allowed in this code */ }
@@ -123,7 +122,9 @@ foo(?!bar) { /* foo shouldn't be followed by bar */ }
     }
   }
 ```
+
 ## References, Read More
+
   1. regular expression (regex) are converted to NFA using [Thompson's NFA 
 construction](https://dl.acm.org/doi/abs/10.1145/363347.363387). Minimal
 implementation in C is [here](https://swtch.com/~rsc/regexp/regexp1.html)
@@ -147,8 +148,8 @@ Aho, Alfred V., and Ullman, Jeffrey D.
 Proceedings of the 3rd Annual ACM Symposium on Theory of Computing (STOC), 1971, pp. 116–123.
 ```
 
-
 ## ToDo
+
   1. Remove non-reached states
   2. YYSTYPE not tested for return type other than `int`
   3. OR operator ('|') for multiple patterns with same action 
